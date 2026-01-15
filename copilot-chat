@@ -1,0 +1,2038 @@
+User: im starting from a fresh ubuntu 20.04 docker container, you are currently inside that. help me do this installation.
+
+you may use deepwiki-mcp to learn about d-helix ( ONLY IF NECESSARY). search and find out whatever you need. just help me finish the installation please.
+
+i have been struggling with the installation for a long time. be thorough, read everything carefully, research everything to be installed, etc.
+
+GitHub Copilot: I'll help you install D-Helix on your fresh Ubuntu 20.04 Docker container. This is a complex installation with multiple components. Let me first explore the workspace to understand all the requirements and then proceed systematically. 
+
+Created 10 todos
+
+Read [](file:///workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix)
+
+Read [](file:///workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix/README.md)
+
+Let me explore the patch files and scripts to understand better what's needed: 
+
+Read [](file:///workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix/angr_vexir_diff.patch#1-1), lines 1 to 100
+
+Read [](file:///workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix/claripy_vexir_diff.patch)
+
+Read [](file:///workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix/D_helix_angr)
+
+Read [](file:///workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix/D_helix_angr/generate_symbolic.py#1-1), lines 1 to 100
+
+Read [](file:///workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix/prompt_diff.patch#1-1), lines 1 to 200
+
+Now I have a good understanding of the installation requirements. Let me start the installation systematically. First, let me check the current state of the system: 
+
+Starting: *Install system dependencies* (2/11)
+
+Ran terminal command: cat /etc/os-release && python3 --version && which python3 && gcc --version 2>/dev/null | head -1 || echo "GCC not installed"
+
+Good! Python 3.8 is already installed. Let me install the essential system dependencies: 
+
+Ran terminal command: apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    wget \
+    curl \
+    software-properties-common \
+    cmake \
+    ninja-build \
+    pkg-config \
+    python3-pip \
+    python3-dev \
+    python3-venv \
+    libffi-dev \
+    libssl-dev \
+    libtcmalloc-minimal4 \
+    libgoogle-perftools-dev \
+    libncurses5-dev \
+    libsqlite3-dev \
+    libcap-dev \
+    zlib1g-dev \
+    libbz2-dev \
+    libreadline-dev \
+    libxml2-dev \
+    libxslt1-dev \
+    default-jdk \
+    unzip \
+    vim \
+    nano \
+    sudo \
+    2>&1 | tail -20
+
+Ran terminal command: DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    build-essential \
+    git \
+    wget \
+    curl \
+    software-properties-common \
+    cmake \
+    ninja-build \
+    pkg-config \
+    python3-pip \
+    python3-dev \
+    python3-venv \
+    libffi-dev \
+    libssl-dev \
+    libtcmalloc-minimal4 \
+    libgoogle-perftools-dev \
+    libncurses5-dev \
+    libsqlite3-dev \
+    libcap-dev \
+    zlib1g-dev \
+    libbz2-dev \
+    libreadline-dev \
+    libxml2-dev \
+    libxslt1-dev \
+    default-jdk \
+    unzip \
+    vim \
+    sudo 2>&1 | tail -30
+
+User: i did the apt-get install. from now on, just give me a block of commands to run, break down the steps.ill report errors in each block. you dont handle terminal commands well
+
+GitHub Copilot: Got it! I'll break this down into clear command blocks. Here's the installation plan:
+
+---
+
+## **Step 1: Install GCC 11**
+
+```bash
+add-apt-repository -y ppa:ubuntu-toolchain-r/test
+apt-get update
+apt-get install -y gcc-11 g++-11
+update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 110
+update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 110
+gcc --version
+```
+
+---
+
+## **Step 2: Install Clang 16**
+
+```bash
+wget https://apt.llvm.org/llvm.sh
+chmod +x llvm.sh
+./llvm.sh 16
+update-alternatives --install /usr/bin/clang clang /usr/bin/clang-16 160
+update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-16 160
+clang --version
+```
+
+---
+
+Run Step 1 first and let me know the result. Then I'll guide you through the remaining steps:
+
+3. Install LLVM/Clang 3.8 (required for PROMPT)
+4. Install Z3 solver v4.9.1
+5. Install and patch angr (Vex IR version)
+6. Install klee-uclibc
+7. Install and patch PROMPT
+8. Install and patch Ghidra
+9. Final configuration
+
+User: step 2 done
+
+GitHub Copilot: Great! Now Step 3:
+
+---
+
+## **Step 3: Install LLVM/Clang 3.8 (required for PROMPT)**
+
+This is a bit involved since LLVM 3.8 is old and needs to be built from source:
+
+```bash
+mkdir -p /opt/llvm-3.8 && cd /opt/llvm-3.8
+
+# Download LLVM 3.8
+wget https://releases.llvm.org/3.8.0/llvm-3.8.0.src.tar.xz
+tar xf llvm-3.8.0.src.tar.xz
+mv llvm-3.8.0.src llvm-src
+
+# Download Clang 3.8
+cd llvm-src/tools
+wget https://releases.llvm.org/3.8.0/cfe-3.8.0.src.tar.xz
+tar xf cfe-3.8.0.src.tar.xz
+mv cfe-3.8.0.src clang
+
+# Build LLVM+Clang 3.8
+cd /opt/llvm-3.8/llvm-src
+mkdir build && cd build
+cmake -G "Unix Makefiles" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DLLVM_TARGETS_TO_BUILD="X86" \
+    -DLLVM_ENABLE_ASSERTIONS=ON \
+    -DLLVM_ENABLE_RTTI=ON \
+    ..
+```
+
+After the cmake completes, run:
+
+```bash
+cd /opt/llvm-3.8/llvm-src/build
+make -j$(nproc)
+```
+
+**Note:** The `make` step will take a while (20-60 minutes depending on CPU cores). Let me know once cmake finishes and the make starts (or if there are errors).
+
+User: root@0d97d57fc6f7:~# ls
+clang+llvm-3.8.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz
+root@0d97d57fc6f7:~# tar -xf clang+llvm-3.8.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz
+buntu-14.04 llvm-3.8
+root@0d97d57fc6f7:~# mv clang+llvm-3.8.0-x86_64-linux-gnu-ubuntu-14.04 llvm-3.8
+root@0d97d57fc6f7:~# export PATH="/root/llvm-3.8/bin:$PATH"
+root@0d97d57fc6f7:~# echo 'export PATH="/root/llvm-3.8/bin:$PATH"' >> ~/.bashrc
+root@0d97d57fc6f7:~# source ~/.bashrc
+root@0d97d57fc6f7:~# 
+
+i did this
+
+GitHub Copilot: Smart move using pre-built binaries instead of building from source. Let's verify it works:
+
+```bash
+/root/llvm-3.8/bin/clang --version
+/root/llvm-3.8/bin/llvm-config --version
+```
+
+If that works, let's proceed to:
+
+---
+
+## **Step 4: Install Z3 Solver v4.9.1**
+
+```bash
+cd /opt
+wget https://github.com/Z3Prover/z3/releases/download/z3-4.9.1/z3-4.9.1-x64-glibc-2.31.zip
+unzip z3-4.9.1-x64-glibc-2.31.zip
+mv z3-4.9.1-x64-glibc-2.31 z3
+
+# Add to PATH and set library path
+echo 'export PATH="/opt/z3/bin:$PATH"' >> ~/.bashrc
+echo 'export LD_LIBRARY_PATH="/opt/z3/bin:$LD_LIBRARY_PATH"' >> ~/.bashrc
+echo 'export PYTHONPATH="/opt/z3/bin/python:$PYTHONPATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Verify
+z3 --version
+```
+
+Let me know when done!
+
+User: root@0d97d57fc6f7:~# /root/llvm-3.8/bin/clang --version
+/root/llvm-3.8/bin/clang: error while loading shared libraries: libtinfo.so.5: cannot open shared object file: No such file or directory
+bin/llvm-config --versionroot@0d97d57fc6f7:~# /root/llvm-3.8/bin/llvm-config --version
+/root/llvm-3.8/bin/llvm-config: error while loading shared libraries: libtinfo.so.5: cannot open shared object file: No such file or directory
+root@0d97d57fc6f7:~# 
+
+GitHub Copilot: Missing library issue. Easy fix:
+
+```bash
+apt-get install -y libtinfo5 libncurses5
+
+# Now verify again
+/root/llvm-3.8/bin/clang --version
+/root/llvm-3.8/bin/llvm-config --version
+```
+
+User: step 4 done, z3
+
+GitHub Copilot: 
+
+User: @agent Try Again
+
+GitHub Copilot: Excellent! Now the big one:
+
+---
+
+## **Step 5: Install and Patch angr (Vex IR version)**
+
+```bash
+cd /opt
+
+# Install Python dependencies first
+pip3 install virtualenv
+
+# Clone angr-dev
+git clone https://github.com/angr/angr-dev.git
+cd angr-dev
+
+# Checkout the specific commit for Vex IR
+git checkout b2198226e6194310c57a4b50ae9a6c82b1b6cd7f
+
+# Clone all submodules
+./setup.sh -e angr
+
+# Now checkout specific commits for each component
+cd /opt/angr-dev/ailment && git checkout cb3205ffcb182632840d9b745a8f42b5d259a4b6
+cd /opt/angr-dev/angr && git checkout 6ef773615ff70c5c334ee16945e22e9005a8c82d
+cd /opt/angr-dev/archinfo && git checkout 4eea2b81e78a2d902d6c7c0ff7168b304b9d3b8c
+cd /opt/angr-dev/claripy && git checkout 91518043156fc317195a577a6c8b41763c138577
+cd /opt/angr-dev/cle && git checkout 7024cd3fc479af221cc3070b0ddca1ac20ca1a22
+cd /opt/angr-dev/pyvex && git checkout de7f92e126fbbaa61287e2a647be6f2871d56032
+```
+
+Run this first block. The `./setup.sh -e angr` step might take some time and may ask questions - just accept defaults. Let me know if you encounter errors or when it's done.
+
+User: root@0d97d57fc6f7:/opt/angr-dev# ./setup.sh -e angr
+[+] 14:12:56 Checking dependencies...
+[!!] 14:12:56 Please install the following packages: openjdk-8-jdk zlib1g:i386 libtinfo5:i386 libstdc++6:i386 libgcc1:i386 libc6:i386 nasm binutils-multiarch qtdeclarative5-dev libpixman-1-dev libglib2.0-dev debian-archive-keyring debootstrap libtool 
+root@0d97d57fc6f7:/opt/angr-dev# 
+
+GitHub Copilot: Install the missing dependencies:
+
+```bash
+dpkg --add-architecture i386
+apt-get update
+apt-get install -y \
+    openjdk-8-jdk \
+    zlib1g:i386 \
+    libtinfo5:i386 \
+    libstdc++6:i386 \
+    libgcc1:i386 \
+    libc6:i386 \
+    nasm \
+    binutils-multiarch \
+    qtdeclarative5-dev \
+    libpixman-1-dev \
+    libglib2.0-dev \
+    debian-archive-keyring \
+    debootstrap \
+    libtool \
+    libc6-dev-i386
+```
+
+Then re-run:
+
+```bash
+cd /opt/angr-dev
+./setup.sh -e angr
+```
+
+User: root@0d97d57fc6f7:/opt/angr-dev# ./setup.sh -e angr
+[+] 14:14:24 Checking dependencies...
+[+] 14:14:24 Enabling virtualenvwrapper.
+[+] 14:14:24 Could not find virtualenvwrapper preinstalled, installing via pip3...
+Collecting virtualenvwrapper
+  Downloading virtualenvwrapper-6.1.1-py3-none-any.whl.metadata (5.1 kB)
+Requirement already satisfied: virtualenv in /usr/local/lib/python3.8/dist-packages (from virtualenvwrapper) (20.36.1)
+Collecting virtualenv-clone (from virtualenvwrapper)
+  Downloading virtualenv_clone-0.5.7-py3-none-any.whl.metadata (2.7 kB)
+Collecting stevedore (from virtualenvwrapper)
+  Downloading stevedore-5.3.0-py3-none-any.whl.metadata (2.3 kB)
+Collecting pbr>=2.0.0 (from stevedore->virtualenvwrapper)
+  Downloading pbr-7.0.3-py2.py3-none-any.whl.metadata (3.8 kB)
+Requirement already satisfied: distlib<1,>=0.3.7 in /usr/local/lib/python3.8/dist-packages (from virtualenv->virtualenvwrapper) (0.4.0)
+Requirement already satisfied: filelock<4,>=3.16.1 in /usr/local/lib/python3.8/dist-packages (from virtualenv->virtualenvwrapper) (3.16.1)
+Requirement already satisfied: platformdirs<5,>=3.9.1 in /usr/local/lib/python3.8/dist-packages (from virtualenv->virtualenvwrapper) (4.3.6)
+Requirement already satisfied: typing-extensions>=4.13.2 in /usr/local/lib/python3.8/dist-packages (from virtualenv->virtualenvwrapper) (4.13.2)
+Requirement already satisfied: setuptools in /usr/lib/python3/dist-packages (from pbr>=2.0.0->stevedore->virtualenvwrapper) (45.2.0)
+Downloading virtualenvwrapper-6.1.1-py3-none-any.whl (22 kB)
+Downloading stevedore-5.3.0-py3-none-any.whl (49 kB)
+Downloading virtualenv_clone-0.5.7-py3-none-any.whl (6.6 kB)
+Downloading pbr-7.0.3-py2.py3-none-any.whl (131 kB)
+Installing collected packages: virtualenv-clone, pbr, stevedore, virtualenvwrapper
+  WARNING: The script virtualenv-clone is installed in '/root/.local/bin' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+  WARNING: The script pbr is installed in '/root/.local/bin' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+Successfully installed pbr-7.0.3 stevedore-5.3.0 virtualenv-clone-0.5.7 virtualenvwrapper-6.1.1
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/premkproject
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/postmkproject
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/initialize
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/premkvirtualenv
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/postmkvirtualenv
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/prermvirtualenv
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/postrmvirtualenv
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/predeactivate
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/postdeactivate
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/preactivate
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/postactivate
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/get_env_details
+[+] 14:14:27 Creating cpython virtualenv angr...
+created virtual environment CPython3.8.10.final.0-64 in 575ms
+  creator CPython3Posix(dest=/root/.virtualenvs/angr, clear=False, no_vcs_ignore=False, global=False)
+  seeder FromAppData(download=False, pip=bundle, setuptools=bundle, wheel=bundle, via=copy, app_data_dir=/root/.local/share/virtualenv)
+    added seed packages: pip==25.0.1, setuptools==75.3.2, wheel==0.45.1
+  activators BashActivator,CShellActivator,FishActivator,NushellActivator,PowerShellActivator,PythonActivator
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/angr/bin/predeactivate
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/angr/bin/postdeactivate
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/angr/bin/preactivate
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/angr/bin/postactivate
+virtualenvwrapper.user_scripts creating /root/.virtualenvs/angr/bin/get_env_details
+Requirement already satisfied: pip>=20.0.2 in /root/.virtualenvs/angr/lib/python3.8/site-packages (25.0.1)
+Requirement already satisfied: pip in /root/.virtualenvs/angr/lib/python3.8/site-packages (25.0.1)
+Requirement already satisfied: setuptools>=59 in /root/.virtualenvs/angr/lib/python3.8/site-packages (75.3.2)
+Requirement already satisfied: wheel in /root/.virtualenvs/angr/lib/python3.8/site-packages (0.45.1)
+Collecting cffi
+  Downloading cffi-1.17.1-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (1.5 kB)
+Collecting unicorn==1.0.2rc4
+  Downloading unicorn-1.0.2rc4-py2.py3-none-manylinux1_x86_64.whl.metadata (1.3 kB)
+Collecting pycparser (from cffi)
+  Downloading pycparser-2.23-py3-none-any.whl.metadata (993 bytes)
+Downloading unicorn-1.0.2rc4-py2.py3-none-manylinux1_x86_64.whl (8.1 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 8.1/8.1 MB 38.0 MB/s eta 0:00:00
+Downloading cffi-1.17.1-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (446 kB)
+Downloading pycparser-2.23-py3-none-any.whl (118 kB)
+Installing collected packages: unicorn, pycparser, cffi
+Successfully installed cffi-1.17.1 pycparser-2.23 unicorn-1.0.2rc4
+[+] 14:14:32 Cloning angr components!
+[+] 14:14:32 Cloning repo archinfo.
+[-] 14:14:32 Trying to clone from https://github.com/angr/archinfo
+[-] 14:14:33 Success - archinfo cloned!
+[+] 14:14:33 Cloning repo pyvex.
+[-] 14:14:33 Trying to clone from https://github.com/angr/pyvex
+[-] 14:14:37 Success - pyvex cloned!
+[+] 14:14:37 Cloning repo cle.
+[-] 14:14:37 Trying to clone from https://github.com/angr/cle
+[-] 14:14:39 Success - cle cloned!
+[+] 14:14:39 Cloning repo claripy.
+[-] 14:14:39 Trying to clone from https://github.com/angr/claripy
+[-] 14:14:41 Success - claripy cloned!
+[+] 14:14:41 Cloning repo ailment.
+[-] 14:14:41 Trying to clone from https://github.com/angr/ailment
+[-] 14:14:43 Success - ailment cloned!
+[+] 14:14:43 Cloning repo angr.
+[-] 14:14:43 Trying to clone from https://github.com/angr/angr
+[-] 14:14:52 Success - angr cloned!
+[+] 14:14:52 Cloning repo angr-doc.
+[-] 14:14:52 Trying to clone from https://github.com/angr/angr-doc
+[-] 14:14:56 Success - angr-doc cloned!
+[+] 14:14:56 Cloning repo binaries.
+[-] 14:14:56 Trying to clone from https://github.com/angr/binaries
+[-] 14:15:17 Success - binaries cloned!
+[+] 14:15:17 Cloning repo archr.
+[-] 14:15:17 Trying to clone from https://github.com/angr/archr
+[-] 14:15:19 Success - archr cloned!
+[+] 14:15:19 Cloning repo angr-management.
+[-] 14:15:19 Trying to clone from https://github.com/angr/angr-management
+[-] 14:15:25 Success - angr-management cloned!
+[+] 14:15:25 Installing python packages!
+[+] 14:15:25 Install list:  archinfo pyvex cle claripy ailment angr archr angr-management
+[+] 14:15:25 Installing archinfo.
+[-] 14:15:25 pip-installing: --no-build-isolation -e archinfo.
+Obtaining file:///opt/angr-dev/archinfo
+  Checking if build backend supports build_editable ... done
+  Preparing editable metadata (pyproject.toml) ... error
+  error: subprocess-exited-with-error
+  
+  × Preparing editable metadata (pyproject.toml) did not run successfully.
+  │ exit code: 1
+  ╰─> [89 lines of output]
+      configuration error: `project.license` must be valid exactly by one definition (2 matches found):
+      
+          - keys:
+              'file': {type: string}
+            required: ['file']
+          - keys:
+              'text': {type: string}
+            required: ['text']
+      
+      DESCRIPTION:
+          `Project license <https://peps.python.org/pep-0621/#license>`_.
+      
+      GIVEN VALUE:
+          "BSD-2-Clause"
+      
+      OFFENDING RULE: 'oneOf'
+      
+      DEFINITION:
+          {
+              "oneOf": [
+                  {
+                      "properties": {
+                          "file": {
+                              "type": "string",
+                              "$$description": [
+                                  "Relative path to the file (UTF-8) which contains the license for the",
+                                  "project."
+                              ]
+                          }
+                      },
+                      "required": [
+                          "file"
+                      ]
+                  },
+                  {
+                      "properties": {
+                          "text": {
+                              "type": "string",
+                              "$$description": [
+                                  "The license of the project whose meaning is that of the",
+                                  "`License field from the core metadata",
+                                  "<https://packaging.python.org/specifications/core-metadata/#license>`_."
+                              ]
+                          }
+                      },
+                      "required": [
+                          "text"
+                      ]
+                  }
+              ]
+          }
+      Traceback (most recent call last):
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py", line 389, in <module>
+          main()
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py", line 373, in main
+          json_out["return_val"] = hook(**hook_input["kwargs"])
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py", line 209, in prepare_metadata_for_build_editable
+          return hook(metadata_directory, config_settings)
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/build_meta.py", line 487, in prepare_metadata_for_build_editable
+          return self.prepare_metadata_for_build_wheel(
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/build_meta.py", line 376, in prepare_metadata_for_build_wheel
+          self.run_setup()
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/build_meta.py", line 319, in run_setup
+          exec(code, locals())
+        File "<string>", line 1, in <module>
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/__init__.py", line 117, in setup
+          return distutils.core.setup(**attrs)
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/_distutils/core.py", line 157, in setup
+          dist.parse_config_files()
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/_virtualenv.py", line 23, in parse_config_files
+          result = old_parse_config_files(self, *args, **kwargs)
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/dist.py", line 655, in parse_config_files
+          pyprojecttoml.apply_configuration(self, filename, ignore_option_errors)
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/config/pyprojecttoml.py", line 71, in apply_configuration
+          config = read_configuration(filepath, True, ignore_option_errors, dist)
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/config/pyprojecttoml.py", line 139, in read_configuration
+          validate(subset, filepath)
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/config/pyprojecttoml.py", line 60, in validate
+          raise ValueError(f"{error}\n{summary}") from None
+      ValueError: invalid pyproject.toml config: `project.license`.
+      configuration error: `project.license` must be valid exactly by one definition (2 matches found):
+      
+          - keys:
+              'file': {type: string}
+            required: ['file']
+          - keys:
+              'text': {type: string}
+            required: ['text']
+      
+      [end of output]
+  
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+error: metadata-generation-failed
+
+× Encountered error while generating package metadata.
+╰─> See above for output.
+
+note: This is an issue with the package mentioned above, not pip.
+hint: See above for details.
+[!!] 14:15:26 pip failure (--no-build-isolation -e archinfo).
+root@0d97d57fc6f7:/opt/angr-dev# 
+
+GitHub Copilot: The issue is that the newer setuptools is too strict for the old angr code. Let's downgrade setuptools in the virtualenv:
+
+```bash
+source /root/.virtualenvs/angr/bin/activate
+pip install "setuptools<68" "pip<24"
+```
+
+Then re-run setup:
+
+```bash
+cd /opt/angr-dev
+./setup.sh -e angr
+```
+
+User: (angr) root@0d97d57fc6f7:/opt/angr-dev# ./setup.sh -e angr
+[+] 14:16:40 Checking dependencies...
+[+] 14:16:40 Enabling virtualenvwrapper.
+/root/.virtualenvs/angr/bin/python3: Error while finding module specification for 'virtualenvwrapper.hook_loader' (ModuleNotFoundError: No module named 'virtualenvwrapper')
+virtualenvwrapper.sh: There was a problem running the initialization hooks.
+
+If Python could not import the module virtualenvwrapper.hook_loader,
+check that virtualenvwrapper has been installed for
+VIRTUALENVWRAPPER_PYTHON=/root/.virtualenvs/angr/bin/python3 and that PATH is
+set properly.
+/root/.virtualenvs/angr/bin/python3: Error while finding module specification for 'virtualenvwrapper.hook_loader' (ModuleNotFoundError: No module named 'virtualenvwrapper')
+[+] 14:16:40 Virtualenv angr already exists, reusing it. Use -E instead of -e if you want to re-create the environment.
+/root/.virtualenvs/angr/bin/python3: Error while finding module specification for 'virtualenvwrapper.hook_loader' (ModuleNotFoundError: No module named 'virtualenvwrapper')
+/root/.virtualenvs/angr/bin/python3: Error while finding module specification for 'virtualenvwrapper.hook_loader' (ModuleNotFoundError: No module named 'virtualenvwrapper')
+Requirement already satisfied: pip>=20.0.2 in /root/.virtualenvs/angr/lib/python3.8/site-packages (23.3.2)
+Collecting pip>=20.0.2
+  Downloading pip-25.0.1-py3-none-any.whl.metadata (3.7 kB)
+Downloading pip-25.0.1-py3-none-any.whl (1.8 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.8/1.8 MB 8.4 MB/s eta 0:00:00
+Installing collected packages: pip
+  Attempting uninstall: pip
+    Found existing installation: pip 23.3.2
+    Uninstalling pip-23.3.2:
+      Successfully uninstalled pip-23.3.2
+Successfully installed pip-25.0.1
+Requirement already satisfied: pip in /root/.virtualenvs/angr/lib/python3.8/site-packages (25.0.1)
+Requirement already satisfied: setuptools>=59 in /root/.virtualenvs/angr/lib/python3.8/site-packages (67.8.0)
+Collecting setuptools>=59
+  Downloading setuptools-75.3.2-py3-none-any.whl.metadata (6.9 kB)
+Requirement already satisfied: wheel in /root/.virtualenvs/angr/lib/python3.8/site-packages (0.45.1)
+Requirement already satisfied: cffi in /root/.virtualenvs/angr/lib/python3.8/site-packages (1.17.1)
+Requirement already satisfied: unicorn==1.0.2rc4 in /root/.virtualenvs/angr/lib/python3.8/site-packages (1.0.2rc4)
+Requirement already satisfied: pycparser in /root/.virtualenvs/angr/lib/python3.8/site-packages (from cffi) (2.23)
+Downloading setuptools-75.3.2-py3-none-any.whl (1.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 3.3 MB/s eta 0:00:00
+Installing collected packages: setuptools
+  Attempting uninstall: setuptools
+    Found existing installation: setuptools 67.8.0
+    Uninstalling setuptools-67.8.0:
+      Successfully uninstalled setuptools-67.8.0
+Successfully installed setuptools-75.3.2
+[+] 14:16:45 Cloning angr components!
+[+] 14:16:45 Skipping archinfo -- already cloned. Use ./git_all.sh pull for update.
+[+] 14:16:45 Skipping pyvex -- already cloned. Use ./git_all.sh pull for update.
+[+] 14:16:45 Skipping cle -- already cloned. Use ./git_all.sh pull for update.
+[+] 14:16:45 Skipping claripy -- already cloned. Use ./git_all.sh pull for update.
+[+] 14:16:45 Skipping ailment -- already cloned. Use ./git_all.sh pull for update.
+[+] 14:16:45 Skipping angr -- already cloned. Use ./git_all.sh pull for update.
+[+] 14:16:45 Skipping angr-doc -- already cloned. Use ./git_all.sh pull for update.
+[+] 14:16:45 Skipping binaries -- already cloned. Use ./git_all.sh pull for update.
+[+] 14:16:45 Skipping archr -- already cloned. Use ./git_all.sh pull for update.
+[+] 14:16:45 Skipping angr-management -- already cloned. Use ./git_all.sh pull for update.
+[+] 14:16:45 Installing python packages!
+[+] 14:16:45 Install list:  archinfo pyvex cle claripy ailment angr archr angr-management
+[+] 14:16:45 Installing archinfo.
+[-] 14:16:45 pip-installing: --no-build-isolation -e archinfo.
+Obtaining file:///opt/angr-dev/archinfo
+  Checking if build backend supports build_editable ... done
+  Preparing editable metadata (pyproject.toml) ... error
+  error: subprocess-exited-with-error
+  
+  × Preparing editable metadata (pyproject.toml) did not run successfully.
+  │ exit code: 1
+  ╰─> [89 lines of output]
+      configuration error: `project.license` must be valid exactly by one definition (2 matches found):
+      
+          - keys:
+              'file': {type: string}
+            required: ['file']
+          - keys:
+              'text': {type: string}
+            required: ['text']
+      
+      DESCRIPTION:
+          `Project license <https://peps.python.org/pep-0621/#license>`_.
+      
+      GIVEN VALUE:
+          "BSD-2-Clause"
+      
+      OFFENDING RULE: 'oneOf'
+      
+      DEFINITION:
+          {
+              "oneOf": [
+                  {
+                      "properties": {
+                          "file": {
+                              "type": "string",
+                              "$$description": [
+                                  "Relative path to the file (UTF-8) which contains the license for the",
+                                  "project."
+                              ]
+                          }
+                      },
+                      "required": [
+                          "file"
+                      ]
+                  },
+                  {
+                      "properties": {
+                          "text": {
+                              "type": "string",
+                              "$$description": [
+                                  "The license of the project whose meaning is that of the",
+                                  "`License field from the core metadata",
+                                  "<https://packaging.python.org/specifications/core-metadata/#license>`_."
+                              ]
+                          }
+                      },
+                      "required": [
+                          "text"
+                      ]
+                  }
+              ]
+          }
+      Traceback (most recent call last):
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py", line 389, in <module>
+          main()
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py", line 373, in main
+          json_out["return_val"] = hook(**hook_input["kwargs"])
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/pip/_vendor/pyproject_hooks/_in_process/_in_process.py", line 209, in prepare_metadata_for_build_editable
+          return hook(metadata_directory, config_settings)
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/build_meta.py", line 487, in prepare_metadata_for_build_editable
+          return self.prepare_metadata_for_build_wheel(
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/build_meta.py", line 376, in prepare_metadata_for_build_wheel
+          self.run_setup()
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/build_meta.py", line 319, in run_setup
+          exec(code, locals())
+        File "<string>", line 1, in <module>
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/__init__.py", line 117, in setup
+          return distutils.core.setup(**attrs)
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/_distutils/core.py", line 157, in setup
+          dist.parse_config_files()
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/_virtualenv.py", line 23, in parse_config_files
+          result = old_parse_config_files(self, *args, **kwargs)
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/dist.py", line 655, in parse_config_files
+          pyprojecttoml.apply_configuration(self, filename, ignore_option_errors)
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/config/pyprojecttoml.py", line 71, in apply_configuration
+          config = read_configuration(filepath, True, ignore_option_errors, dist)
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/config/pyprojecttoml.py", line 139, in read_configuration
+          validate(subset, filepath)
+        File "/root/.virtualenvs/angr/lib/python3.8/site-packages/setuptools/config/pyprojecttoml.py", line 60, in validate
+          raise ValueError(f"{error}\n{summary}") from None
+      ValueError: invalid pyproject.toml config: `project.license`.
+      configuration error: `project.license` must be valid exactly by one definition (2 matches found):
+      
+          - keys:
+              'file': {type: string}
+            required: ['file']
+          - keys:
+              'text': {type: string}
+            required: ['text']
+      
+      [end of output]
+  
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+error: metadata-generation-failed
+
+× Encountered error while generating package metadata.
+╰─> See above for output.
+
+note: This is an issue with the package mentioned above, not pip.
+hint: See above for details.
+[!!] 14:16:46 pip failure (--no-build-isolation -e archinfo).
+(angr) root@0d97d57fc6f7:/opt/angr-dev# 
+
+GitHub Copilot: The setup.sh keeps upgrading setuptools. Let's do manual installation instead:
+
+```bash
+# First, properly downgrade in the virtualenv
+source /root/.virtualenvs/angr/bin/activate
+pip install "setuptools==67.8.0" "pip==23.3.2"
+
+# Now checkout the specific commits and install manually
+cd /opt/angr-dev/archinfo && git checkout 4eea2b81e78a2d902d6c7c0ff7168b304b9d3b8c
+cd /opt/angr-dev/pyvex && git checkout de7f92e126fbbaa61287e2a647be6f2871d56032
+cd /opt/angr-dev/cle && git checkout 7024cd3fc479af221cc3070b0ddca1ac20ca1a22
+cd /opt/angr-dev/claripy && git checkout 91518043156fc317195a577a6c8b41763c138577
+cd /opt/angr-dev/ailment && git checkout cb3205ffcb182632840d9b745a8f42b5d259a4b6
+cd /opt/angr-dev/angr && git checkout 6ef773615ff70c5c334ee16945e22e9005a8c82d
+```
+
+After checkouts, install each package:
+
+```bash
+source /root/.virtualenvs/angr/bin/activate
+cd /opt/angr-dev
+
+pip install -e ./archinfo
+pip install -e ./pyvex
+pip install -e ./cle
+pip install -e ./claripy
+pip install -e ./ailment
+pip install -e ./angr
+```
+
+Let me know if any errors occur during the git checkouts or pip installs.
+
+User: (angr) root@0d97d57fc6f7:/opt/angr-dev# pip install -e ./angr
+Obtaining file:///opt/angr-dev/angr
+  Installing build dependencies ... error
+  error: subprocess-exited-with-error
+  
+  × pip subprocess to install build dependencies did not run successfully.
+  │ exit code: 1
+  ╰─> [10 lines of output]
+      Collecting setuptools>=59
+        Using cached setuptools-75.3.2-py3-none-any.whl.metadata (6.9 kB)
+      Collecting wheel
+        Using cached wheel-0.45.1-py3-none-any.whl.metadata (2.3 kB)
+      ERROR: Ignored the following versions that require a different python version: 0.46.0 Requires-Python >=3.9; 0.46.1 Requires-Python >=3.9; 7.8.9.26 Requires-Python <3.0; 75.4.0 Requires-Python >=3.9; 75.5.0 Requires-Python >=3.9; 75.6.0 Requires-Python >=3.9; 75.7.0 Requires-Python >=3.9; 75.8.0 Requires-Python >=3.9; 75.8.1 Requires-Python >=3.9; 75.8.2 Requires-Python >=3.9; 75.9.0 Requires-Python >=3.9; 75.9.1 Requires-Python >=3.9; 76.0.0 Requires-Python >=3.9; 76.1.0 Requires-Python >=3.9; 77.0.1 Requires-Python >=3.9; 77.0.3 Requires-Python >=3.9; 78.0.1 Requires-Python >=3.9; 78.0.2 Requires-Python >=3.9; 78.1.0 Requires-Python >=3.9; 78.1.1 Requires-Python >=3.9; 79.0.0 Requires-Python >=3.9; 79.0.1 Requires-Python >=3.9; 80.0.0 Requires-Python >=3.9; 80.0.1 Requires-Python >=3.9; 80.1.0 Requires-Python >=3.9; 80.2.0 Requires-Python >=3.9; 80.3.0 Requires-Python >=3.9; 80.3.1 Requires-Python >=3.9; 80.4.0 Requires-Python >=3.9; 80.6.0 Requires-Python >=3.9; 80.7.0 Requires-Python >=3.9; 80.7.1 Requires-Python >=3.9; 80.8.0 Requires-Python >=3.9; 80.9.0 Requires-Python >=3.9; 9.2.103 Requires-Python >=3.10; 9.2.104 Requires-Python >=3.10; 9.2.105 Requires-Python >=3.10; 9.2.106 Requires-Python >=3.10; 9.2.107 Requires-Python >=3.10; 9.2.108 Requires-Python >=3.10; 9.2.109 Requires-Python >=3.10; 9.2.110 Requires-Python >=3.10; 9.2.111 Requires-Python >=3.10; 9.2.112 Requires-Python >=3.10; 9.2.113 Requires-Python >=3.10; 9.2.114 Requires-Python >=3.10; 9.2.115 Requires-Python >=3.10; 9.2.116 Requires-Python >=3.10; 9.2.117 Requires-Python >=3.10; 9.2.118 Requires-Python >=3.10; 9.2.119 Requires-Python >=3.10; 9.2.120 Requires-Python >=3.10; 9.2.121 Requires-Python >=3.10; 9.2.122 Requires-Python >=3.10; 9.2.123 Requires-Python >=3.10; 9.2.124 Requires-Python >=3.10; 9.2.125 Requires-Python >=3.10; 9.2.126 Requires-Python >=3.10; 9.2.127 Requires-Python >=3.10; 9.2.128 Requires-Python >=3.10; 9.2.129 Requires-Python >=3.10; 9.2.130 Requires-Python >=3.10; 9.2.131 Requires-Python >=3.10; 9.2.132 Requires-Python >=3.10; 9.2.133 Requires-Python >=3.10; 9.2.134 Requires-Python >=3.10; 9.2.135 Requires-Python >=3.10; 9.2.136 Requires-Python >=3.10; 9.2.137 Requires-Python >=3.10; 9.2.138 Requires-Python >=3.10; 9.2.139 Requires-Python >=3.10; 9.2.140 Requires-Python >=3.10; 9.2.141 Requires-Python >=3.10; 9.2.142 Requires-Python >=3.10; 9.2.143 Requires-Python >=3.10; 9.2.144 Requires-Python >=3.10; 9.2.145 Requires-Python >=3.10; 9.2.146 Requires-Python >=3.10; 9.2.147 Requires-Python >=3.10; 9.2.148 Requires-Python >=3.10; 9.2.149 Requires-Python >=3.10; 9.2.150 Requires-Python >=3.10; 9.2.152 Requires-Python >=3.10; 9.2.153 Requires-Python >=3.10; 9.2.154 Requires-Python >=3.10; 9.2.156 Requires-Python >=3.10; 9.2.157 Requires-Python >=3.10; 9.2.158 Requires-Python >=3.10; 9.2.159 Requires-Python >=3.10; 9.2.160 Requires-Python >=3.10; 9.2.161 Requires-Python >=3.10; 9.2.162 Requires-Python >=3.10; 9.2.165 Requires-Python >=3.10; 9.2.166 Requires-Python >=3.10; 9.2.167 Requires-Python >=3.10; 9.2.168 Requires-Python >=3.10; 9.2.169 Requires-Python >=3.10; 9.2.170 Requires-Python >=3.10; 9.2.171 Requires-Python >=3.10; 9.2.172 Requires-Python >=3.10; 9.2.173 Requires-Python >=3.10; 9.2.174 Requires-Python >=3.10; 9.2.175 Requires-Python >=3.10; 9.2.176 Requires-Python >=3.10; 9.2.177 Requires-Python >=3.10; 9.2.178 Requires-Python >=3.10; 9.2.179 Requires-Python >=3.10; 9.2.180 Requires-Python >=3.10; 9.2.181 Requires-Python >=3.10; 9.2.182 Requires-Python >=3.10; 9.2.183 Requires-Python >=3.10; 9.2.184 Requires-Python >=3.10; 9.2.185 Requires-Python >=3.10; 9.2.186 Requires-Python >=3.10; 9.2.187 Requires-Python >=3.10; 9.2.188 Requires-Python >=3.10; 9.2.189 Requires-Python >=3.10; 9.2.190 Requires-Python >=3.10; 9.2.191 Requires-Python >=3.10; 9.2.192 Requires-Python >=3.10; 9.2.193 Requires-Python >=3.10
+      ERROR: Could not find a version that satisfies the requirement pyvex==9.2.10.dev0 (from versions: 3.0.linux-x86_64, 3.1, 3.11, 3.12, 4.5.9.9b0, 4.5.9.9, 4.5.9.13, 4.5.9.14, 4.5.9.29, 4.5.10.14, 4.5.11.23, 4.5.12.12, 4.5.12.21, 4.6.1.4b0, 4.6.1.4, 4.6.1.4.post1, 4.6.1.4.post2, 4.6.1.4.post3, 4.6.1.5, 4.6.1.27, 4.6.3.15, 4.6.3.28, 4.6.4.28, 4.6.5.27, 4.6.6.28, 5.6.8.22, 5.6.8.25, 5.6.10.5, 5.6.12.3, 6.7.1.13, 6.7.1.13.post1, 6.7.1.13.post2, 6.7.1.31, 6.7.3.26, 6.7.4.12, 6.7.6.9, 6.7.7.27, 7.7.9.8, 7.7.9.14, 7.7.12.16, 7.8.2.21, 7.8.6.16, 7.8.6.23, 7.8.7.1, 7.8.8.1, 8.18.10.5, 8.18.10.25, 8.19.2.4, 8.19.4.5, 8.19.7.25, 8.19.10.29, 8.19.10.30, 8.20.1.7, 8.20.5.27, 8.20.6.1, 8.20.6.8, 8.20.7.6, 8.20.7.27, 9.0.4378, 9.0.4446, 9.0.4495, 9.0.4663, 9.0.4885, 9.0.4940, 9.0.5002, 9.0.5034, 9.0.5171, 9.0.5326, 9.0.5327, 9.0.5376, 9.0.5405, 9.0.5450, 9.0.5610, 9.0.5739, 9.0.5811, 9.0.5903, 9.0.6136, 9.0.6281, 9.0.6421, 9.0.6488, 9.0.6588, 9.0.6642, 9.0.6790, 9.0.6852, 9.0.6885, 9.0.7293, 9.0.7491, 9.0.7833, 9.0.7912, 9.0.8021, 9.0.8761, 9.0.9031, 9.0.9166, 9.0.9297, 9.0.9355, 9.0.9438, 9.0.9506, 9.0.9572, 9.0.9684, 9.0.9792, 9.0.9947, 9.0.10010, 9.0.10055, 9.0.10072, 9.0.10159, 9.0.10281, 9.0.10339, 9.0.10409, 9.0.10534, 9.0.10576, 9.0.10651, 9.0.10689, 9.0.10730, 9.1.10913, 9.1.11508, 9.1.11611, 9.1.11752, 9.1.12332, 9.2.1, 9.2.2, 9.2.3, 9.2.4, 9.2.5, 9.2.6, 9.2.7, 9.2.8, 9.2.9, 9.2.10, 9.2.11, 9.2.12, 9.2.13, 9.2.14, 9.2.15, 9.2.16, 9.2.17, 9.2.18, 9.2.19, 9.2.20, 9.2.21, 9.2.22, 9.2.23, 9.2.24, 9.2.25, 9.2.26, 9.2.27, 9.2.28, 9.2.29, 9.2.30, 9.2.31, 9.2.32, 9.2.33, 9.2.34, 9.2.35, 9.2.36, 9.2.37, 9.2.38, 9.2.39, 9.2.40, 9.2.41, 9.2.42, 9.2.43, 9.2.44, 9.2.45, 9.2.46, 9.2.47, 9.2.48, 9.2.49, 9.2.50, 9.2.51, 9.2.52, 9.2.53, 9.2.54, 9.2.55, 9.2.56, 9.2.57, 9.2.58, 9.2.59, 9.2.60, 9.2.61, 9.2.62, 9.2.63, 9.2.64, 9.2.65, 9.2.66, 9.2.67, 9.2.68, 9.2.69, 9.2.70, 9.2.71, 9.2.72, 9.2.73, 9.2.74, 9.2.75, 9.2.76, 9.2.77, 9.2.78, 9.2.79, 9.2.80, 9.2.81, 9.2.82, 9.2.83, 9.2.84, 9.2.85, 9.2.86, 9.2.87, 9.2.88, 9.2.89, 9.2.90, 9.2.91, 9.2.92, 9.2.93, 9.2.94, 9.2.95, 9.2.96, 9.2.97, 9.2.98, 9.2.99, 9.2.100, 9.2.101, 9.2.102)
+      ERROR: No matching distribution found for pyvex==9.2.10.dev0
+      
+      [notice] A new release of pip is available: 23.3.2 -> 25.0.1
+      [notice] To update, run: pip install --upgrade pip
+      [end of output]
+  
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+error: subprocess-exited-with-error
+
+× pip subprocess to install build dependencies did not run successfully.
+│ exit code: 1
+╰─> See above for output.
+
+note: This error originates from a subprocess, and is likely not a problem with pip.
+
+[notice] A new release of pip is available: 23.3.2 -> 25.0.1
+[notice] To update, run: pip install --upgrade pip
+(angr) root@0d97d57fc6f7:/opt/angr-dev# 
+
+GitHub Copilot: The issue is pip's build isolation is looking for packages on PyPI instead of using local editable installs. Use `--no-build-isolation`:
+
+```bash
+source /root/.virtualenvs/angr/bin/activate
+cd /opt/angr-dev
+
+pip install --no-build-isolation -e ./archinfo
+pip install --no-build-isolation -e ./pyvex
+pip install --no-build-isolation -e ./cle
+pip install --no-build-isolation -e ./claripy
+pip install --no-build-isolation -e ./ailment
+pip install --no-build-isolation -e ./angr
+```
+
+If you get missing dependency errors, we may need to install some dependencies first:
+
+```bash
+pip install sortedcontainers cachetools capstone-engine progressbar2 networkx protobuf rpyc
+```
+
+Then retry the `--no-build-isolation` installs.
+
+User: pip installs are complete
+
+GitHub Copilot: Excellent! Now let's apply the D-Helix patches:
+
+---
+
+## **Step 5b: Apply D-Helix patches to angr and claripy**
+
+```bash
+source /root/.virtualenvs/angr/bin/activate
+cd /opt/angr-dev
+
+# Apply the angr patch (Vex IR version)
+cd /opt/angr-dev/angr
+patch -p1 < /workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix/angr_vexir_diff.patch
+
+# Apply the claripy patch (Vex IR version)
+cd /opt/angr-dev/claripy
+patch -p1 < /workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix/claripy_vexir_diff.patch
+
+# Copy muqi.py to angr directory
+cp /workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix/muqi.py /opt/angr-dev/angr/angr/
+
+# Verify the file is there
+ls -la /opt/angr-dev/angr/angr/muqi.py
+```
+
+Let me know the results of the patch commands (especially if any hunks fail).
+
+User: (angr) root@0d97d57fc6f7:/opt/angr-dev# source /root/.virtualenvs/angr/bin/activate
+t/angr-dev(angr) root@0d97d57fc6f7:/opt/angr-dev# cd /opt/angr-dev
+(angr) root@0d97d57fc6f7:/opt/angr-dev# cd /opt/angr-dev/angr
+(angr) root@0d97d57fc6f7:/opt/angr-dev/angr# patch -p1 < /workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix/angr_vexir_diff.patch
+patching file angr/analyses/decompiler/block_simplifier.py
+patching file angr/analyses/decompiler/decompilation_options.py
+patching file angr/analyses/decompiler/decompiler.py
+patching file angr/analyses/decompiler/structured_codegen/c.py
+patching file angr/analyses/identifier/custom_callable.py
+patching file angr/callable.py
+patching file angr/engines/engine.py
+patching file angr/engines/successors.py
+patching file angr/engines/vex/heavy/heavy.py
+patching file angr/engines/vex/light/light.py
+patching file angr/exploration_techniques/loop_seer.py
+patching file angr/factory.py
+patching file angr/sim_manager.py
+patching file angr/sim_state.py
+patching file angr/state_plugins/solver.py
+patching file pyproject.toml
+(angr) root@0d97d57fc6f7:/opt/angr-dev/angr# 
+(angr) root@0d97d57fc6f7:/opt/angr-dev/angr# cd /opt/angr-dev/claripy
+me/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3(angr) root@0d97d57fc6f7:/opt/angr-dev/claripy# patch -p1 < /woefar/DH-v3/D-helix/claripy_vexir_diff.patchepos/jae
+patching file claripy/backends/backend_z3.py
+(angr) root@0d97d57fc6f7:/opt/angr-dev/claripy# cp /workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix/muqi.py /opt/angr-dev/angr/angr/
+gr-dev/angr/angr/muqi.py(angr) root@0d97d57fc6f7:/opt/angr-dev/claripy# 
+(angr) root@0d97d57fc6f7:/opt/angr-dev/claripy# # Verify the file is there
+(angr) root@0d97d57fc6f7:/opt/angr-dev/claripy# ls -la /opt/angr-dev/angr/angr/muqi.py
+-rw-r--r-- 1 root root 103 Jan 14 14:21 /opt/angr-dev/angr/angr/muqi.py
+(angr) root@0d97d57fc6f7:/opt/angr-dev/claripy# 
+
+GitHub Copilot: All patches applied successfully! Let's verify angr works:
+
+```bash
+source /root/.virtualenvs/angr/bin/activate
+python -c "import angr; print('angr version:', angr.__version__)"
+```
+
+If that works, proceed to:
+
+---
+
+## **Step 6: Install klee-uclibc (required for PROMPT)**
+
+```bash
+cd /opt
+git clone https://github.com/klee/klee-uclibc.git
+cd klee-uclibc
+./configure --make-llvm-lib --with-llvm-config=/root/llvm-3.8/bin/llvm-config
+make -j$(nproc)
+```
+
+Let me know the results!
+
+User: angr) root@0d97d57fc6f7:/opt/angr-dev/claripy# python -c "import angr; print('angr version:', angr.__version__)"
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/opt/angr-dev/angr/angr/__init__.py", line 40, in <module>
+    from .sim_procedure import SimProcedure
+  File "/opt/angr-dev/angr/angr/sim_procedure.py", line 7, in <module>
+    from cle import SymbolType
+  File "/opt/angr-dev/cle/cle/__init__.py", line 18, in <module>
+    from .loader import *
+  File "/opt/angr-dev/cle/cle/loader.py", line 8, in <module>
+    import archinfo
+  File "/opt/angr-dev/archinfo/archinfo/__init__.py", line 29, in <module>
+    from .arch_aarch64  import ArchAArch64
+  File "/opt/angr-dev/archinfo/archinfo/arch_aarch64.py", line 23, in <module>
+    class ArchAArch64(Arch):
+  File "/opt/angr-dev/archinfo/archinfo/arch_aarch64.py", line 53, in ArchAArch64
+    cs_arch = _capstone.CS_ARCH_ARM64
+AttributeError: module 'capstone' has no attribute 'CS_ARCH_ARM64'
+(angr) root@0d97d57fc6f7:/opt/angr-dev/claripy# 
+
+GitHub Copilot: Capstone version mismatch. Fix it:
+
+```bash
+source /root/.virtualenvs/angr/bin/activate
+pip uninstall -y capstone
+pip install capstone==4.0.2
+```
+
+Then verify again:
+
+```bash
+python -c "import angr; print('angr version:', angr.__version__)"
+```
+
+User: (angr) root@0d97d57fc6f7:/opt/angr-dev/claripy# python -c "import angr; print('angr version:', angr.__version__)"
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/opt/angr-dev/angr/angr/__init__.py", line 40, in <module>
+    from .sim_procedure import SimProcedure
+  File "/opt/angr-dev/angr/angr/sim_procedure.py", line 7, in <module>
+    from cle import SymbolType
+  File "/opt/angr-dev/cle/cle/__init__.py", line 18, in <module>
+    from .loader import *
+  File "/opt/angr-dev/cle/cle/loader.py", line 1173, in <module>
+    from .backends import MetaELF, ELF, PE, ELFCore, Minidump, Blob, ALL_BACKENDS, Backend
+  File "/opt/angr-dev/cle/cle/backends/__init__.py", line 522, in <module>
+    from .elf import ELF, ELFCore, MetaELF
+  File "/opt/angr-dev/cle/cle/backends/elf/__init__.py", line 1, in <module>
+    from .elf import ELF
+  File "/opt/angr-dev/cle/cle/backends/elf/elf.py", line 26, in <module>
+    from .metaelf import MetaELF, maybedecode
+  File "/opt/angr-dev/cle/cle/backends/elf/metaelf.py", line 1, in <module>
+    import pyvex
+  File "/opt/angr-dev/pyvex/pyvex/__init__.py", line 17, in <module>
+    from .vex_ffi import ffi_str as _ffi_str
+ModuleNotFoundError: No module named 'pyvex.vex_ffi'
+(angr) root@0d97d57fc6f7:/opt/angr-dev/claripy# 
+
+GitHub Copilot: pyvex needs to build its C extensions. Let's rebuild it:
+
+```bash
+source /root/.virtualenvs/angr/bin/activate
+cd /opt/angr-dev/pyvex
+
+# Clean and rebuild
+pip uninstall -y pyvex
+python setup.py build
+pip install --no-build-isolation -e .
+```
+
+Then verify:
+
+```bash
+python -c "import pyvex; print('pyvex loaded')"
+python -c "import angr; print('angr version:', angr.__version__)"
+```
+
+User: (angr) root@0d97d57fc6f7:/opt/angr-dev/pyvex# python -c "import pyvex; print('pyvex loaded')"
+pyvex loaded
+(angr) root@0d97d57fc6f7:/opt/angr-dev/pyvex# python -c "import angr; print('angr version:', angr.__version__)"
+WARNING | 2026-01-14 14:23:51,861 | angr.state_plugins.unicorn_engine | failed loading "angr_native.so", unicorn support disabled (/opt/angr-dev/angr/angr/lib/lib/angr_native.so: cannot open shared object file: No such file or directory)
+angr version: 9.2.10.dev0
+(angr) root@0d97d57fc6f7:/opt/angr-dev/pyvex# 
+
+GitHub Copilot: angr is working! The unicorn warning is not critical for D-Helix. Now proceed to:
+
+---
+
+## **Step 6: Install klee-uclibc (required for PROMPT)**
+
+```bash
+cd /opt
+git clone https://github.com/klee/klee-uclibc.git
+cd klee-uclibc
+./configure --make-llvm-lib --with-llvm-config=/root/llvm-3.8/bin/llvm-config
+make -j$(nproc)
+```
+
+User: (angr) root@0d97d57fc6f7:/opt/klee-uclibc# make
+/root/llvm-3.8/bin/clang -DCURSES_LOC="<ncurses.h>" -DLOCALE  -MM *.c > .depend 2>/dev/null || :
+make[1]: 'conf' is up to date.
+make -C extra/locale locale_headers
+make[1]: Nothing to be done for 'locale_headers'.
+(angr) root@0d97d57fc6f7:/opt/klee-uclibc# 
+
+GitHub Copilot: klee-uclibc is ready. Now:
+
+---
+
+## **Step 7: Install and patch PROMPT**
+
+```bash
+cd /opt
+git clone https://github.com/sysrel/PROMPT.git
+cd PROMPT
+
+# Create build directory
+mkdir build && cd build
+
+# Configure PROMPT with cmake
+cmake \
+    -DENABLE_TCMALLOC=ON \
+    -DENABLE_POSIX_RUNTIME=ON \
+    -DENABLE_KLEE_UCLIBC=ON \
+    -DKLEE_UCLIBC_PATH=/opt/klee-uclibc \
+    -DENABLE_SOLVER_Z3=ON \
+    -DENABLE_SOLVER_STP=OFF \
+    -DENABLE_SOLVER_METASMT=OFF \
+    -DENABLE_UNIT_TESTS=OFF \
+    -DLLVM_CONFIG_BINARY=/root/llvm-3.8/bin/llvm-config \
+    -DLLVMCC=/root/llvm-3.8/bin/clang \
+    -DLLVMCXX=/root/llvm-3.8/bin/clang++ \
+    ..
+```
+
+Let me know the cmake output (errors or success).
+
+User: -- Configuring done
+-- Generating done
+-- Build files have been written to: /opt/PROMPT/build
+(angr) root@0d97d57fc6f7:/opt/PROMPT/build# 
+
+GitHub Copilot: Before building, apply the D-Helix patch first:
+
+```bash
+cd /opt/PROMPT
+patch -p1 < /workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix/prompt_diff.patch
+```
+
+Then build:
+
+```bash
+cd /opt/PROMPT/build
+make -j$(nproc)
+```
+
+The build will take a while. Let me know the results!
+
+User: while installing prompt, ive faced many errors before. there are 10000 lines of attempts, the line 7000 shows when i was finally successful. give me the correct steps to ensure prompt gets made. rn im getting this error 
+
+(angr) root@0d97d57fc6f7:/opt/PROMPT/build# make -j$(nproc)
+Scanning dependencies of target BuildKLEERuntimes
+Scanning dependencies of target kleeRuntest
+Scanning dependencies of target FileCheck
+Scanning dependencies of target kleeSupport
+Scanning dependencies of target kleaverExpr
+Scanning dependencies of target not
+[  4%] Creating directories for 'BuildKLEERuntimes'
+[  4%] Building CXX object runtime/Runtest/CMakeFiles/kleeRuntest.dir/__/__/lib/Basic/KTest.cpp.o
+[  4%] Building C object runtime/Runtest/CMakeFiles/kleeRuntest.dir/intrinsics.c.o
+[  4%] Performing RuntimeBuild step for 'BuildKLEERuntimes'
+make[3]: Entering directory '/opt/PROMPT/build/runtime'
+[  5%] Building CXX object test/CMakeFiles/FileCheck.dir/FileCheck.cpp.o
+[  6%] Building CXX object test/CMakeFiles/not.dir/not.cpp.o
+make[4]: Entering directory '/opt/PROMPT/build/runtime/Intrinsic'
+[  7%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/ErrorHandling.cpp.o
+[  7%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/FileHandling.cpp.o
+[  8%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/CompressionStream.cpp.o
+[  9%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/RNG.cpp.o
+[ 10%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/MemoryUsage.cpp.o
+[ 11%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/Time.cpp.o
+[ 11%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/Timer.cpp.o
+[ 12%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/PrintVersion.cpp.o
+[ 13%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/TreeStream.cpp.o
+[ 14%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/Constraints.cpp.o
+[ 14%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/Assigment.cpp.o
+[ 15%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/ArrayCache.cpp.o
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/Intrinsic/klee_choose.c
+[ 16%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/ExprBuilder.cpp.o
+[ 17%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/ExprEvaluator.cpp.o
+[ 18%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/ExprSMTLIBPrinter.cpp.o
+[ 19%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/ExprPPrinter.cpp.o
+[ 19%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/Expr.cpp.o
+[ 20%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/ExprUtil.cpp.o
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/Intrinsic/klee_div_zero_check.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/Intrinsic/klee_int.c
+[ 21%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/ExprVisitor.cpp.o
+/opt/PROMPT/lib/Support/ErrorHandling.cpp:222:9: warning: ISO C++11 requires whitespace after the macro name
+  222 | #define Muqi_DEBUG;
+      |         ^~~~~~~~~~
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/Intrinsic/klee_overshift_check.c
+[ 22%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/Lexer.cpp.o
+[ 23%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/Parser.cpp.o
+/opt/PROMPT/lib/Expr/Constraints.cpp:26:10: fatal error: ./Z3Builder.h: No such file or directory
+   26 | #include "./Z3Builder.h"
+      |          ^~~~~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [lib/Expr/CMakeFiles/kleaverExpr.dir/build.make:89: lib/Expr/CMakeFiles/kleaverExpr.dir/Constraints.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/Intrinsic/klee_range.c
+[ 25%] No download step for 'BuildKLEERuntimes'
+[ 24%] Linking CXX shared library ../../lib/libkleeRuntest.so
+/opt/PROMPT/lib/Expr/Expr.cpp:326:9: warning: ISO C++11 requires whitespace after the macro name
+  326 | #define Muqi_DEBUG;
+      |         ^~~~~~~~~~
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/Intrinsic/memcpy.c
+[ 25%] No patch step for 'BuildKLEERuntimes'
+[ 26%] No update step for 'BuildKLEERuntimes'
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/Intrinsic/memmove.c
+[ 26%] Built target kleeRuntest
+[ 27%] Performing configure step for 'BuildKLEERuntimes'
+
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/Intrinsic/mempcpy.c
+[ 28%] Performing build step for 'BuildKLEERuntimes'
+
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/Intrinsic/memset.c
+[ 29%] Performing install step for 'BuildKLEERuntimes'
+
+Creating LLVM module /opt/PROMPT/build/Release+Debug+Asserts/lib/kleeRuntimeIntrinsic.bc
+make[4]: Leaving directory '/opt/PROMPT/build/runtime/Intrinsic'
+make[4]: Entering directory '/opt/PROMPT/build/runtime/klee-libc'
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/__cxa_atexit.c
+[ 30%] Linking CXX executable ../bin/not
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/abort.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/atexit.c
+/usr/bin/ld: CMakeFiles/not.dir/not.cpp.o: in function `main':
+/opt/PROMPT/build/test/not.cpp:35: undefined reference to `llvm::sys::findProgramByName[abi:cxx11](llvm::StringRef, llvm::ArrayRef<llvm::StringRef>)'
+/usr/bin/ld: /opt/PROMPT/build/test/not.cpp:43: undefined reference to `llvm::sys::ExecuteAndWait(llvm::StringRef, char const**, char const**, llvm::StringRef const**, unsigned int, unsigned int, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >*, bool*)'
+collect2: error: ld returned 1 exit status
+make[2]: *** [test/CMakeFiles/not.dir/build.make:85: bin/not] Error 1
+make[1]: *** [CMakeFiles/Makefile2:969: test/CMakeFiles/not.dir/all] Error 2
+make[1]: *** Waiting for unfinished jobs....
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/atoi.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/calloc.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/htonl.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/memchr.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/memcmp.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/memcpy.c
+In file included from /root/llvm-3.8/include/llvm/Support/Allocator.h:24,
+                 from /root/llvm-3.8/include/llvm/ADT/StringMap.h:18,
+                 from /root/llvm-3.8/include/llvm/Support/Host.h:17,
+                 from /root/llvm-3.8/include/llvm/ADT/Hashing.h:49,
+                 from /root/llvm-3.8/include/llvm/ADT/ArrayRef.h:13,
+                 from /root/llvm-3.8/include/llvm/Support/CommandLine.h:23,
+                 from /opt/PROMPT/lib/Expr/ExprSMTLIBPrinter.cpp:10:
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h: In instantiation of 'void llvm::SmallVectorTemplateBase<T, true>::push_back(const T&) [with T = std::pair<const char*, std::pair<int, const char*> >]':
+/root/llvm-3.8/include/llvm/Support/CommandLine.h:515:12:   required from 'llvm::cl::ValuesClass<DataType>::ValuesClass(const char*, DataType, const char*, __va_list_tag*) [with DataType = int]'
+/root/llvm-3.8/include/llvm/Support/CommandLine.h:538:25:   required from 'llvm::cl::ValuesClass<DataType> llvm::cl::values(const char*, DataType, const char*, ...) [with DataType = int]'
+/opt/PROMPT/lib/Expr/ExprSMTLIBPrinter.cpp:23:21:   required from here
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h:340:11: warning: 'void* memcpy(void*, const void*, size_t)' writing to an object of type 'struct std::pair<const char*, std::pair<int, const char*> >' with no trivial copy-assignment; use copy-assignment or copy-initialization instead [-Wclass-memaccess]
+  340 |     memcpy(this->end(), &Elt, sizeof(T));
+      |     ~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /usr/include/c++/11/utility:70,
+                 from /root/llvm-3.8/include/llvm/Support/type_traits.h:18,
+                 from /root/llvm-3.8/include/llvm/Support/Casting.h:19,
+                 from /opt/PROMPT/lib/Expr/ExprSMTLIBPrinter.cpp:9:
+/usr/include/c++/11/bits/stl_pair.h:211:12: note: 'struct std::pair<const char*, std::pair<int, const char*> >' declared here
+  211 |     struct pair
+      |            ^~~~
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/memmove.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/mempcpy.c
+In file included from /root/llvm-3.8/include/llvm/Support/Allocator.h:24,
+                 from /root/llvm-3.8/include/llvm/ADT/StringMap.h:18,
+                 from /root/llvm-3.8/include/llvm/Support/Host.h:17,
+                 from /root/llvm-3.8/include/llvm/ADT/Hashing.h:49,
+                 from /root/llvm-3.8/include/llvm/ADT/ArrayRef.h:13,
+                 from /root/llvm-3.8/include/llvm/Support/CommandLine.h:23,
+                 from /opt/PROMPT/lib/Expr/ExprSMTLIBPrinter.cpp:10:
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h: In instantiation of 'static void llvm::SmallVectorTemplateBase<T, true>::uninitialized_copy(T1*, T1*, T2*, typename std::enable_if<std::is_same<typename std::remove_const<T1>::type, T2>::value>::type*) [with T1 = std::pair<const char*, std::pair<int, const char*> >; T2 = std::pair<const char*, std::pair<int, const char*> >; T = std::pair<const char*, std::pair<int, const char*> >; typename std::enable_if<std::is_same<typename std::remove_const<T1>::type, T2>::value>::type = void; typename std::remove_const<T1>::type = std::pair<const char*, std::pair<int, const char*> >]':
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h:305:23:   required from 'static void llvm::SmallVectorTemplateBase<T, true>::uninitialized_move(It1, It1, It2) [with It1 = std::pair<const char*, std::pair<int, const char*> >*; It2 = std::pair<const char*, std::pair<int, const char*> >*; T = std::pair<const char*, std::pair<int, const char*> >]'
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h:838:27:   required from 'llvm::SmallVectorImpl<T>& llvm::SmallVectorImpl<T>::operator=(llvm::SmallVectorImpl<T>&&) [with T = std::pair<const char*, std::pair<int, const char*> >]'
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h:907:36:   required from 'llvm::SmallVector<T, N>::SmallVector(llvm::SmallVector<T, N>&&) [with T = std::pair<const char*, std::pair<int, const char*> >; unsigned int N = 4]'
+/root/llvm-3.8/include/llvm/Support/CommandLine.h:504:33:   required from 'llvm::cl::ValuesClass<DataType> llvm::cl::values(const char*, DataType, const char*, ...) [with DataType = int]'
+/opt/PROMPT/lib/Expr/ExprSMTLIBPrinter.cpp:23:21:   required from here
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h:328:13: warning: 'void* memcpy(void*, const void*, size_t)' writing to an object of type 'struct std::pair<const char*, std::pair<int, const char*> >' with no trivial copy-assignment; use copy-assignment or copy-initialization instead [-Wclass-memaccess]
+  328 |       memcpy(Dest, I, (E - I) * sizeof(T));
+      |       ~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /usr/include/c++/11/utility:70,
+                 from /root/llvm-3.8/include/llvm/Support/type_traits.h:18,
+                 from /root/llvm-3.8/include/llvm/Support/Casting.h:19,
+                 from /opt/PROMPT/lib/Expr/ExprSMTLIBPrinter.cpp:9:
+/usr/include/c++/11/bits/stl_pair.h:211:12: note: 'struct std::pair<const char*, std::pair<int, const char*> >' declared here
+  211 |     struct pair
+      |            ^~~~
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/memset.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/putchar.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/stpcpy.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/strcat.c
+/opt/PROMPT/lib/Expr/Parser.cpp: In member function '{anonymous}::ExprResult {anonymous}::ParserImpl::ParseParenExpr({anonymous}::TypeResult)':
+/opt/PROMPT/lib/Expr/Parser.cpp:1001:5: warning: this statement may fall through [-Wimplicit-fallthrough=]
+ 1001 |     if (ExprKind == Expr::Select)
+      |     ^~
+/opt/PROMPT/lib/Expr/Parser.cpp:1003:3: note: here
+ 1003 |   default:
+      |   ^~~~~~~
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/strchr.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/strcmp.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/strcoll.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/strcpy.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/strlen.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/strncmp.c
+[ 31%] Linking CXX static library ../libkleeSupport.a
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/strncpy.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/strrchr.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/strtol.c
+[ 31%] Built target kleeSupport
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/strtoul.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/tolower.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/klee-libc/toupper.c
+Creating LLVM module /opt/PROMPT/build/Release+Debug+Asserts/lib/klee-libc.bc
+make[4]: Leaving directory '/opt/PROMPT/build/runtime/klee-libc'
+make[4]: Entering directory '/opt/PROMPT/build/runtime/POSIX'
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/POSIX/fd.c
+/opt/PROMPT/runtime/POSIX/fd.c:554:19: warning: nonnull parameter 'path' will evaluate to 'true' on first
+      encounter [-Wpointer-bool-conversion]
+                 (path ? __concretize_string(path) : NULL), buf, (long)flags);
+                  ^~~~ ~
+1 warning generated.
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/POSIX/fd_32.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/POSIX/fd_64.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/POSIX/fd_init.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/POSIX/illegal.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/POSIX/klee_init_env.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/POSIX/misc.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/POSIX/selinux.c
+LLVMCC (Release+Debug+Asserts) /opt/PROMPT/runtime/POSIX/stubs.c
+/opt/PROMPT/runtime/POSIX/stubs.c:109:72: warning: attribute declaration must precede definition
+      [-Wignored-attributes]
+int mknod(const char *pathname, mode_t mode, dev_t dev) __attribute__((weak));
+                                                                       ^
+/usr/include/x86_64-linux-gnu/sys/stat.h:483:8: note: previous definition is here
+__NTH (mknod (const char *__path, __mode_t __mode, __dev_t __dev))
+       ^
+1 warning generated.
+Creating LLVM archive /opt/PROMPT/build/Release+Debug+Asserts/lib/libkleeRuntimePOSIX.bca
+make[4]: Leaving directory '/opt/PROMPT/build/runtime/POSIX'
+make[3]: Leaving directory '/opt/PROMPT/build/runtime'
+[ 31%] Completed 'BuildKLEERuntimes'
+[ 31%] Built target BuildKLEERuntimes
+[ 32%] Linking CXX executable ../bin/FileCheck
+/usr/bin/ld: CMakeFiles/FileCheck.dir/FileCheck.cpp.o: in function `Pattern::AddRegExToRegEx(llvm::StringRef, unsigned int&, llvm::SourceMgr&)':
+/opt/PROMPT/build/test/FileCheck.cpp:339: undefined reference to `llvm::Regex::isValid(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&)'
+/usr/bin/ld: CMakeFiles/FileCheck.dir/FileCheck.cpp.o: in function `Pattern::Match(llvm::StringRef, unsigned long&, llvm::StringMap<llvm::StringRef, llvm::MallocAllocator>&) const':
+/opt/PROMPT/build/test/FileCheck.cpp:416: undefined reference to `llvm::Regex::escape[abi:cxx11](llvm::StringRef)'
+/usr/bin/ld: CMakeFiles/FileCheck.dir/FileCheck.cpp.o: in function `Pattern::ParsePattern(llvm::StringRef, llvm::StringRef, llvm::SourceMgr&, unsigned int)':
+/opt/PROMPT/build/test/FileCheck.cpp:328: undefined reference to `llvm::Regex::escape[abi:cxx11](llvm::StringRef)'
+/usr/bin/ld: CMakeFiles/FileCheck.dir/FileCheck.cpp.o: in function `llvm::cl::opt<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, false, llvm::cl::parser<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >::~opt()':
+/root/llvm-3.8/include/llvm/Support/CommandLine.h:1189: undefined reference to `vtable for llvm::cl::opt<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, false, llvm::cl::parser<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >'
+/usr/bin/ld: CMakeFiles/FileCheck.dir/FileCheck.cpp.o: in function `main':
+/opt/PROMPT/build/test/FileCheck.cpp:860: undefined reference to `llvm::Twine::str[abi:cxx11]() const'
+/usr/bin/ld: CMakeFiles/FileCheck.dir/FileCheck.cpp.o: in function `llvm::cl::OptionValue<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >::OptionValue()':
+/root/llvm-3.8/include/llvm/Support/CommandLine.h:480: undefined reference to `vtable for llvm::cl::OptionValue<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >'
+/usr/bin/ld: CMakeFiles/FileCheck.dir/FileCheck.cpp.o: in function `llvm::cl::opt<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, false, llvm::cl::parser<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >::opt<llvm::cl::FormattingFlags, llvm::cl::desc, llvm::cl::NumOccurrencesFlag>(llvm::cl::FormattingFlags const&, llvm::cl::desc const&, llvm::cl::NumOccurrencesFlag const&)':
+/root/llvm-3.8/include/llvm/Support/CommandLine.h:1249: undefined reference to `vtable for llvm::cl::opt<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, false, llvm::cl::parser<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >'
+/usr/bin/ld: CMakeFiles/FileCheck.dir/FileCheck.cpp.o: in function `llvm::cl::parser<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >::parser(llvm::cl::Option&)':
+/root/llvm-3.8/include/llvm/Support/CommandLine.h:938: undefined reference to `vtable for llvm::cl::parser<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >'
+/usr/bin/ld: CMakeFiles/FileCheck.dir/FileCheck.cpp.o: in function `llvm::cl::OptionValue<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >::OptionValue()':
+/root/llvm-3.8/include/llvm/Support/CommandLine.h:480: undefined reference to `vtable for llvm::cl::OptionValue<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >'
+/usr/bin/ld: CMakeFiles/FileCheck.dir/FileCheck.cpp.o: in function `llvm::cl::opt<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, false, llvm::cl::parser<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >::opt<char [11], llvm::cl::desc, llvm::cl::initializer<char [2]>, llvm::cl::value_desc>(char const (&) [11], llvm::cl::desc const&, llvm::cl::initializer<char [2]> const&, llvm::cl::value_desc const&)':
+/root/llvm-3.8/include/llvm/Support/CommandLine.h:1249: undefined reference to `vtable for llvm::cl::opt<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, false, llvm::cl::parser<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >'
+/usr/bin/ld: CMakeFiles/FileCheck.dir/FileCheck.cpp.o: in function `llvm::cl::opt<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, false, llvm::cl::parser<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >::~opt()':
+/root/llvm-3.8/include/llvm/Support/CommandLine.h:1189: undefined reference to `vtable for llvm::cl::opt<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, false, llvm::cl::parser<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >'
+collect2: error: ld returned 1 exit status
+make[2]: *** [test/CMakeFiles/FileCheck.dir/build.make:85: bin/FileCheck] Error 1
+make[1]: *** [CMakeFiles/Makefile2:996: test/CMakeFiles/FileCheck.dir/all] Error 2
+make[1]: *** [CMakeFiles/Makefile2:599: lib/Expr/CMakeFiles/kleaverExpr.dir/all] Error 2
+make: *** [Makefile:130: all] Error 2
+(angr) root@0d97d57fc6f7:/opt/PROMPT/build# 
+
+GitHub Copilot: I can see from your reference file and the error log there are two issues:
+
+1. **Missing `Z3Builder.h`** in `lib/Expr/` directory
+2. **ABI mismatch** - GCC 11 uses a different C++ ABI than the pre-built LLVM 3.8
+
+Here's the fix:
+
+---
+
+## **Fix PROMPT Build Issues**
+
+```bash
+cd /opt/PROMPT
+
+# 1. Copy Z3Builder.h to where it's needed
+cp lib/Core/Z3Builder.h lib/Expr/
+
+# 2. Clean the build
+cd build
+make clean
+
+# 3. Re-run cmake with ABI compatibility flag
+cmake \
+    -DENABLE_TCMALLOC=ON \
+    -DENABLE_POSIX_RUNTIME=ON \
+    -DENABLE_KLEE_UCLIBC=ON \
+    -DKLEE_UCLIBC_PATH=/opt/klee-uclibc \
+    -DENABLE_SOLVER_Z3=ON \
+    -DENABLE_SOLVER_STP=OFF \
+    -DENABLE_SOLVER_METASMT=OFF \
+    -DENABLE_UNIT_TESTS=OFF \
+    -DLLVM_CONFIG_BINARY=/root/llvm-3.8/bin/llvm-config \
+    -DLLVMCC=/root/llvm-3.8/bin/clang \
+    -DLLVMCXX=/root/llvm-3.8/bin/clang++ \
+    -DCMAKE_CXX_FLAGS="-D_GLIBCXX_USE_CXX11_ABI=0" \
+    ..
+
+# 4. Now apply the D-Helix patch BEFORE building
+cd /opt/PROMPT
+patch -p1 < /workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix/prompt_diff.patch
+
+# 5. Build
+cd build
+make -j$(nproc)
+```
+
+The key fix is `-DCMAKE_CXX_FLAGS="-D_GLIBCXX_USE_CXX11_ABI=0"` which forces GCC to use the old ABI that matches the pre-built LLVM 3.8 libraries.
+
+Let me know the result!
+
+User: check diagnosis.txt
+
+make still throwing errors 
+
+(angr) root@0d97d57fc6f7:/opt/PROMPT/build# make -j$(nproc)
+[  1%] Building CXX object test/CMakeFiles/not.dir/not.cpp.o
+[  2%] Performing RuntimeBuild step for 'BuildKLEERuntimes'
+[  3%] Building CXX object runtime/Runtest/CMakeFiles/kleeRuntest.dir/__/__/lib/Basic/KTest.cpp.o
+[  4%] Building C object runtime/Runtest/CMakeFiles/kleeRuntest.dir/intrinsics.c.o
+[  6%] Building CXX object test/CMakeFiles/FileCheck.dir/FileCheck.cpp.o
+[  6%] Creating directories for 'BuildKLEERuntimes'
+[  8%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/FileHandling.cpp.o
+[  8%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/CompressionStream.cpp.o
+[  8%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/ErrorHandling.cpp.o
+[  9%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/MemoryUsage.cpp.o
+[ 10%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/ArrayCache.cpp.o
+make[3]: Entering directory '/opt/PROMPT/build/runtime'
+[ 11%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/PrintVersion.cpp.o
+[ 11%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/Assigment.cpp.o
+[ 13%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/Constraints.cpp.o
+[ 13%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/TreeStream.cpp.o
+[ 14%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/RNG.cpp.o
+make[4]: Entering directory '/opt/PROMPT/build/runtime/Intrinsic'
+[ 15%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/Time.cpp.o
+[ 16%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/ExprBuilder.cpp.o
+[ 17%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/Expr.cpp.o
+[ 17%] Building CXX object lib/Support/CMakeFiles/kleeSupport.dir/Timer.cpp.o
+[ 18%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/ExprEvaluator.cpp.o
+[ 18%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/ExprPPrinter.cpp.o
+[ 19%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/ExprUtil.cpp.o
+[ 20%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/ExprSMTLIBPrinter.cpp.o
+make[4]: Leaving directory '/opt/PROMPT/build/runtime/Intrinsic'
+make[4]: Entering directory '/opt/PROMPT/build/runtime/klee-libc'
+[ 21%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/ExprVisitor.cpp.o
+make[4]: Leaving directory '/opt/PROMPT/build/runtime/klee-libc'
+make[4]: Entering directory '/opt/PROMPT/build/runtime/POSIX'
+make[4]: Leaving directory '/opt/PROMPT/build/runtime/POSIX'
+make[3]: Leaving directory '/opt/PROMPT/build/runtime'
+[ 22%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/Lexer.cpp.o
+/opt/PROMPT/lib/Expr/Constraints.cpp:26:10: fatal error: ./Z3Builder.h: No such file or directory
+   26 | #include "./Z3Builder.h"
+      |          ^~~~~~~~~~~~~~~
+compilation terminated.
+[ 23%] Building CXX object lib/Expr/CMakeFiles/kleaverExpr.dir/Parser.cpp.o
+make[2]: *** [lib/Expr/CMakeFiles/kleaverExpr.dir/build.make:89: lib/Expr/CMakeFiles/kleaverExpr.dir/Constraints.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+/opt/PROMPT/lib/Expr/Expr.cpp:326:9: warning: ISO C++11 requires whitespace after the macro name
+  326 | #define Muqi_DEBUG;
+      |         ^~~~~~~~~~
+[ 24%] Linking CXX shared library ../../lib/libkleeRuntest.so
+[ 25%] No download step for 'BuildKLEERuntimes'
+/opt/PROMPT/lib/Support/ErrorHandling.cpp:222:9: warning: ISO C++11 requires whitespace after the macro name
+  222 | #define Muqi_DEBUG;
+      |         ^~~~~~~~~~
+[ 26%] No update step for 'BuildKLEERuntimes'
+[ 26%] No patch step for 'BuildKLEERuntimes'
+[ 26%] Built target kleeRuntest
+[ 27%] Performing configure step for 'BuildKLEERuntimes'
+
+[ 28%] Performing build step for 'BuildKLEERuntimes'
+
+[ 29%] Performing install step for 'BuildKLEERuntimes'
+
+[ 29%] Completed 'BuildKLEERuntimes'
+[ 29%] Built target BuildKLEERuntimes
+[ 30%] Linking CXX executable ../bin/not
+[ 30%] Built target not
+In file included from /root/llvm-3.8/include/llvm/Support/Allocator.h:24,
+                 from /root/llvm-3.8/include/llvm/ADT/StringMap.h:18,
+                 from /root/llvm-3.8/include/llvm/Support/Host.h:17,
+                 from /root/llvm-3.8/include/llvm/ADT/Hashing.h:49,
+                 from /root/llvm-3.8/include/llvm/ADT/ArrayRef.h:13,
+                 from /root/llvm-3.8/include/llvm/Support/CommandLine.h:23,
+                 from /opt/PROMPT/lib/Expr/ExprSMTLIBPrinter.cpp:10:
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h: In instantiation of 'void llvm::SmallVectorTemplateBase<T, true>::push_back(const T&) [with T = std::pair<const char*, std::pair<int, const char*> >]':
+/root/llvm-3.8/include/llvm/Support/CommandLine.h:515:12:   required from 'llvm::cl::ValuesClass<DataType>::ValuesClass(const char*, DataType, const char*, __va_list_tag*) [with DataType = int]'
+/root/llvm-3.8/include/llvm/Support/CommandLine.h:538:25:   required from 'llvm::cl::ValuesClass<DataType> llvm::cl::values(const char*, DataType, const char*, ...) [with DataType = int]'
+/opt/PROMPT/lib/Expr/ExprSMTLIBPrinter.cpp:23:21:   required from here
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h:340:11: warning: 'void* memcpy(void*, const void*, size_t)' writing to an object of type 'struct std::pair<const char*, std::pair<int, const char*> >' with no trivial copy-assignment; use copy-assignment or copy-initialization instead [-Wclass-memaccess]
+  340 |     memcpy(this->end(), &Elt, sizeof(T));
+      |     ~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /usr/include/c++/11/utility:70,
+                 from /root/llvm-3.8/include/llvm/Support/type_traits.h:18,
+                 from /root/llvm-3.8/include/llvm/Support/Casting.h:19,
+                 from /opt/PROMPT/lib/Expr/ExprSMTLIBPrinter.cpp:9:
+/usr/include/c++/11/bits/stl_pair.h:211:12: note: 'struct std::pair<const char*, std::pair<int, const char*> >' declared here
+  211 |     struct pair
+      |            ^~~~
+In file included from /root/llvm-3.8/include/llvm/Support/Allocator.h:24,
+                 from /root/llvm-3.8/include/llvm/ADT/StringMap.h:18,
+                 from /root/llvm-3.8/include/llvm/Support/Host.h:17,
+                 from /root/llvm-3.8/include/llvm/ADT/Hashing.h:49,
+                 from /root/llvm-3.8/include/llvm/ADT/ArrayRef.h:13,
+                 from /root/llvm-3.8/include/llvm/Support/CommandLine.h:23,
+                 from /opt/PROMPT/lib/Expr/ExprSMTLIBPrinter.cpp:10:
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h: In instantiation of 'static void llvm::SmallVectorTemplateBase<T, true>::uninitialized_copy(T1*, T1*, T2*, typename std::enable_if<std::is_same<typename std::remove_const<T1>::type, T2>::value>::type*) [with T1 = std::pair<const char*, std::pair<int, const char*> >; T2 = std::pair<const char*, std::pair<int, const char*> >; T = std::pair<const char*, std::pair<int, const char*> >; typename std::enable_if<std::is_same<typename std::remove_const<T1>::type, T2>::value>::type = void; typename std::remove_const<T1>::type = std::pair<const char*, std::pair<int, const char*> >]':
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h:305:23:   required from 'static void llvm::SmallVectorTemplateBase<T, true>::uninitialized_move(It1, It1, It2) [with It1 = std::pair<const char*, std::pair<int, const char*> >*; It2 = std::pair<const char*, std::pair<int, const char*> >*; T = std::pair<const char*, std::pair<int, const char*> >]'
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h:838:27:   required from 'llvm::SmallVectorImpl<T>& llvm::SmallVectorImpl<T>::operator=(llvm::SmallVectorImpl<T>&&) [with T = std::pair<const char*, std::pair<int, const char*> >]'
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h:907:36:   required from 'llvm::SmallVector<T, N>::SmallVector(llvm::SmallVector<T, N>&&) [with T = std::pair<const char*, std::pair<int, const char*> >; unsigned int N = 4]'
+/root/llvm-3.8/include/llvm/Support/CommandLine.h:504:33:   required from 'llvm::cl::ValuesClass<DataType> llvm::cl::values(const char*, DataType, const char*, ...) [with DataType = int]'
+/opt/PROMPT/lib/Expr/ExprSMTLIBPrinter.cpp:23:21:   required from here
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h:328:13: warning: 'void* memcpy(void*, const void*, size_t)' writing to an object of type 'struct std::pair<const char*, std::pair<int, const char*> >' with no trivial copy-assignment; use copy-assignment or copy-initialization instead [-Wclass-memaccess]
+  328 |       memcpy(Dest, I, (E - I) * sizeof(T));
+      |       ~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /usr/include/c++/11/utility:70,
+                 from /root/llvm-3.8/include/llvm/Support/type_traits.h:18,
+                 from /root/llvm-3.8/include/llvm/Support/Casting.h:19,
+                 from /opt/PROMPT/lib/Expr/ExprSMTLIBPrinter.cpp:9:
+/usr/include/c++/11/bits/stl_pair.h:211:12: note: 'struct std::pair<const char*, std::pair<int, const char*> >' declared here
+  211 |     struct pair
+      |            ^~~~
+/opt/PROMPT/lib/Expr/Parser.cpp: In member function '{anonymous}::ExprResult {anonymous}::ParserImpl::ParseParenExpr({anonymous}::TypeResult)':
+/opt/PROMPT/lib/Expr/Parser.cpp:1001:5: warning: this statement may fall through [-Wimplicit-fallthrough=]
+ 1001 |     if (ExprKind == Expr::Select)
+      |     ^~
+/opt/PROMPT/lib/Expr/Parser.cpp:1003:3: note: here
+ 1003 |   default:
+      |   ^~~~~~~
+[ 31%] Linking CXX static library ../libkleeSupport.a
+[ 31%] Built target kleeSupport
+In constructor 'Pattern::Pattern(Pattern&&)',
+    inlined from 'void __gnu_cxx::new_allocator<_Tp>::construct(_Up*, _Args&& ...) [with _Up = Pattern; _Args = {Pattern}; _Tp = Pattern]' at /usr/include/c++/11/ext/new_allocator.h:162:4,
+    inlined from 'static void std::allocator_traits<std::allocator<_CharT> >::construct(std::allocator_traits<std::allocator<_CharT> >::allocator_type&, _Up*, _Args&& ...) [with _Up = Pattern; _Args = {Pattern}; _Tp = Pattern]' at /usr/include/c++/11/bits/alloc_traits.h:516:17,
+    inlined from 'void std::vector<_Tp, _Alloc>::emplace_back(_Args&& ...) [with _Args = {Pattern}; _Tp = Pattern; _Alloc = std::allocator<Pattern>]' at /usr/include/c++/11/bits/vector.tcc:115:30,
+    inlined from 'void std::vector<_Tp, _Alloc>::push_back(std::vector<_Tp, _Alloc>::value_type&&) [with _Tp = Pattern; _Alloc = std::allocator<Pattern>]' at /usr/include/c++/11/bits/stl_vector.h:1204:21,
+    inlined from 'bool ReadCheckFile(llvm::SourceMgr&, std::vector<CheckString>&)' at /opt/PROMPT/build/test/FileCheck.cpp:869:37,
+    inlined from 'int main(int, char**)' at /opt/PROMPT/build/test/FileCheck.cpp:1287:20:
+/opt/PROMPT/build/test/FileCheck.cpp:87:7: warning: '<unnamed>.Pattern::LineNumber' may be used uninitialized [-Wmaybe-uninitialized]
+   87 | class Pattern {
+      |       ^~~~~~~
+/opt/PROMPT/build/test/FileCheck.cpp: In function 'int main(int, char**)':
+/opt/PROMPT/build/test/FileCheck.cpp:869:61: note: '<anonymous>' declared here
+  869 |     ImplicitNegativeChecks.push_back(Pattern(Check::CheckNot));
+      |                                                             ^
+[ 32%] Linking CXX executable ../bin/FileCheck
+[ 32%] Built target FileCheck
+make[1]: *** [CMakeFiles/Makefile2:599: lib/Expr/CMakeFiles/kleaverExpr.dir/all] Error 2
+make: *** [Makefile:130: all] Error 2
+(angr) root@0d97d57fc6f7:/opt/PROMPT/build# 
+
+GitHub Copilot: The Z3Builder.h file still wasn't copied. Let's fix that:
+
+```bash
+# Copy Z3Builder.h to lib/Expr where Constraints.cpp needs it
+cp /opt/PROMPT/lib/Core/Z3Builder.h /opt/PROMPT/lib/Expr/
+
+# Verify it's there
+ls -la /opt/PROMPT/lib/Expr/Z3Builder.h
+
+# Resume build
+cd /opt/PROMPT/build
+make -j$(nproc)
+```
+
+User: (angr) root@0d97d57fc6f7:/opt/PROMPT/build# cp /opt/PROMPT/lib/Core/Z3Builder.h /opt/PROMPT/lib/Expr/
+cp: cannot stat '/opt/PROMPT/lib/Core/Z3Builder.h': No such file or directory
+(angr) root@0d97d57fc6f7:/opt/PROMPT/build# cd ..
+
+GitHub Copilot: Let's find where Z3Builder.h actually is:
+
+```bash
+find /opt/PROMPT -name "Z3Builder.h" 2>/dev/null
+find /opt/PROMPT -name "*Z3*" 2>/dev/null
+ls -la /opt/PROMPT/lib/Core/
+ls -la /opt/PROMPT/lib/Solver/
+```
+
+User: (angr) root@0d97d57fc6f7:/opt/PROMPT# find /opt/PROMPT -name "Z3Builder.h" 2>/dev/null
+/opt/PROMPT/lib/Solver/Z3Builder.h
+(angr) root@0d97d57fc6f7:/opt/PROMPT# find /opt/PROMPT -name "*Z3*" 2>/dev/null
+/opt/PROMPT/cmake/modules/FindZ3.cmake
+/opt/PROMPT/lib/Solver/Z3Builder.h.rej
+/opt/PROMPT/lib/Solver/Z3Builder.h
+/opt/PROMPT/lib/Solver/Z3Solver.h
+/opt/PROMPT/lib/Solver/Z3Builder.cpp.rej
+/opt/PROMPT/lib/Solver/Z3Solver.cpp.rej
+/opt/PROMPT/lib/Solver/Z3Solver.cpp
+/opt/PROMPT/lib/Solver/Z3Builder.cpp
+/opt/PROMPT/test/Solver/Z3ConstantArray.c
+/opt/PROMPT/test/Solver/Z3LargeConstantArray.kquery
+(angr) root@0d97d57fc6f7:/opt/PROMPT# 
+
+GitHub Copilot: Found it! It's in `lib/Solver/`. Let's copy it to where it's needed:
+
+```bash
+# Copy Z3Builder.h to lib/Expr (where Constraints.cpp needs it)
+cp /opt/PROMPT/lib/Solver/Z3Builder.h /opt/PROMPT/lib/Expr/
+
+# Also copy to lib/Core (where Executor.cpp needs it)
+cp /opt/PROMPT/lib/Solver/Z3Builder.h /opt/PROMPT/lib/Core/
+
+# Now rebuild
+cd /opt/PROMPT/build
+make -j$(nproc)
+```
+
+User: (angr) root@0d97d57fc6f7:/opt/PROMPT/build# make -j$(nproc)
+[  2%] Built target FileCheck
+[  4%] Built target not
+[  5%] Performing RuntimeBuild step for 'BuildKLEERuntimes'
+[ 13%] Built target kleeSupport
+[ 16%] Built target kleeRuntest
+make[3]: Entering directory '/opt/PROMPT/build/runtime'
+[ 27%] Built target kleaverExpr
+make[4]: Entering directory '/opt/PROMPT/build/runtime/Intrinsic'
+make[4]: Leaving directory '/opt/PROMPT/build/runtime/Intrinsic'
+make[4]: Entering directory '/opt/PROMPT/build/runtime/klee-libc'
+[ 45%] Built target kleaverSolver
+make[4]: Leaving directory '/opt/PROMPT/build/runtime/klee-libc'
+make[4]: Entering directory '/opt/PROMPT/build/runtime/POSIX'
+make[4]: Leaving directory '/opt/PROMPT/build/runtime/POSIX'
+make[3]: Leaving directory '/opt/PROMPT/build/runtime'
+[ 45%] Completed 'BuildKLEERuntimes'
+[ 49%] Built target kleeBasic
+[ 57%] Built target gen-random-bout
+[ 57%] Built target klee-replay
+[ 57%] Built target kleaver
+[ 58%] Building CXX object lib/Core/CMakeFiles/kleeCore.dir/Executor.cpp.o
+[ 58%] Building CXX object lib/Core/CMakeFiles/kleeCore.dir/ExternalDispatcher.cpp.o
+[ 64%] Built target BuildKLEERuntimes
+/opt/PROMPT/lib/Core/Executor.cpp:92:9: warning: ISO C++11 requires whitespace after the macro name
+   92 | #define Muqi_DEBUG;
+      |         ^~~~~~~~~~
+/opt/PROMPT/lib/Core/Executor.cpp:93:9: warning: ISO C++11 requires whitespace after the macro name
+   93 | #define Muqi_external_call;
+      |         ^~~~~~~~~~~~~~~~~~
+/opt/PROMPT/lib/Core/Executor.cpp:94:9: warning: ISO C++11 requires whitespace after the macro name
+   94 | #define Muqi_out_of_bound_pointer;
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /opt/PROMPT/include/klee/../../lib/Prose/Prose.h:6,
+                 from /opt/PROMPT/include/klee/ExecutionState.h:17,
+                 from /opt/PROMPT/lib/Core/Executor.h:18,
+                 from /opt/PROMPT/lib/Core/Executor.cpp:10:
+/opt/PROMPT/include/klee/../../lib/Prose/../Core/Memory.h: In constructor 'klee::MemoryObject::MemoryObject(uint64_t, unsigned int, bool, bool, bool, const llvm::Value*, klee::MemoryManager*, unsigned int, llvm::Type*)':
+/opt/PROMPT/include/klee/../../lib/Prose/../Core/Memory.h:65:22: warning: 'klee::MemoryObject::allocSite' will be initialized after [-Wreorder]
+   65 |   const llvm::Value *allocSite;
+      |                      ^~~~~~~~~
+/opt/PROMPT/include/klee/../../lib/Prose/../Core/Memory.h:51:12: warning:   'unsigned int klee::MemoryObject::num' [-Wreorder]
+   51 |   unsigned num;
+      |            ^~~
+/opt/PROMPT/include/klee/../../lib/Prose/../Core/Memory.h:92:3: warning:   when initialized here [-Wreorder]
+   92 |   MemoryObject(uint64_t _address, unsigned _size,
+      |   ^~~~~~~~~~~~
+In file included from /root/llvm-3.8/include/llvm/ExecutionEngine/ExecutionEngine.h:24,
+                 from /root/llvm-3.8/include/llvm/ExecutionEngine/MCJIT.h:18,
+                 from /opt/PROMPT/lib/Core/ExternalDispatcher.cpp:19:
+/root/llvm-3.8/include/llvm/IR/ValueMap.h: In member function 'bool llvm::ValueMap<KeyT, ValueT, Config>::hasMD() const':
+/root/llvm-3.8/include/llvm/IR/ValueMap.h:102:31: error: cannot convert 'const std::unique_ptr<llvm::DenseMap<const llvm::Metadata*, llvm::TrackingMDRef> >' to 'bool' in return
+  102 |   bool hasMD() const { return MDMap; }
+      |                               ^~~~~
+      |                               |
+      |                               const std::unique_ptr<llvm::DenseMap<const llvm::Metadata*, llvm::TrackingMDRef> >
+make[2]: *** [lib/Core/CMakeFiles/kleeCore.dir/build.make:193: lib/Core/CMakeFiles/kleeCore.dir/ExternalDispatcher.cpp.o] Error 1
+make[2]: *** Waiting for unfinished jobs....
+/opt/PROMPT/lib/Core/Executor.cpp: In function 'unsigned int getSizeofSpecObject(const klee::MemoryObject*, llvm::Type*, llvm::Type*, klee::ref<klee::Expr>, unsigned int, unsigned int)':
+/opt/PROMPT/lib/Core/Executor.cpp:1438:13: warning: unused variable 'found' [-Wunused-variable]
+ 1438 |        bool found = false;
+      |             ^~~~~
+/opt/PROMPT/lib/Core/Executor.cpp: In function 'unsigned int getSizeofSpecArray(const klee::MemoryObject*, llvm::Type*, llvm::Type*, klee::ref<klee::Expr>, unsigned int)':
+/opt/PROMPT/lib/Core/Executor.cpp:1464:11: warning: unused variable 'pt' [-Wunused-variable]
+ 1464 |     Type *pt = t->getPointerTo();
+      |           ^~
+/opt/PROMPT/lib/Core/Executor.cpp:1467:25: warning: unused variable 'sl' [-Wunused-variable]
+ 1467 |     const StructLayout *sl = targetData->getStructLayout(est);
+      |                         ^~
+/opt/PROMPT/lib/Core/Executor.cpp: In function 'void applySizeOfConstraint(klee::ExecutionState&, klee::TimingSolver*, const klee::MemoryObject*, llvm::Type*, unsigned int, klee::ref<klee::Expr>, llvm::Type*, const klee::MemoryObject*, const klee::ObjectState*, unsigned int)':
+/opt/PROMPT/lib/Core/Executor.cpp:1489:21: warning: comparison of integer expressions of different signedness: 'unsigned int' and 'int' [-Wsign-compare]
+ 1489 |      if (baseoffset == -1) {
+      |          ~~~~~~~~~~~^~~~~
+/opt/PROMPT/lib/Core/Executor.cpp:1550:27: warning: unused variable 'eo' [-Wunused-variable]
+ 1550 |                  unsigned eo = esl->getElementOffset(i);
+      |                           ^~
+/opt/PROMPT/lib/Core/Executor.cpp: In function 'bool isAllocTypeLazyInit(llvm::Type*, bool&, int&)':
+/opt/PROMPT/lib/Core/Executor.cpp:1823:13: warning: comparison of integer expressions of different signedness: 'int' and 'unsigned int' [-Wsign-compare]
+ 1823 |       count == 256*8/t->getPrimitiveSizeInBits();
+      |       ~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/opt/PROMPT/lib/Core/Executor.cpp:1823:13: warning: statement has no effect [-Wunused-value]
+/opt/PROMPT/lib/Core/Executor.cpp: In member function 'void klee::Executor::executeCall(klee::ExecutionState&, klee::KInstruction*, llvm::Function*, std::vector<klee::ref<klee::Expr> >&)':
+/opt/PROMPT/lib/Core/Executor.cpp:3233:66: warning: format '%d' expects argument of type 'int', but argument 2 has type 'klee::KInstIterator' [-Wformat=]
+ 3233 |     klee_muqi("Inside Executor::executeCall, state.pc before is %d", state.pc);
+      |                                                                 ~^   ~~~~~~~~
+      |                                                                  |         |
+      |                                                                  int       klee::KInstIterator
+/opt/PROMPT/lib/Core/Executor.cpp:3238:65: warning: format '%d' expects argument of type 'int', but argument 2 has type 'klee::KInstIterator' [-Wformat=]
+ 3238 |     klee_muqi("Inside Executor::executeCall, state.pc after is %d", state.pc);
+      |                                                                ~^   ~~~~~~~~
+      |                                                                 |         |
+      |                                                                 int       klee::KInstIterator
+/opt/PROMPT/lib/Core/Executor.cpp: In function 'void muqi_transfertoblock_info(llvm::BasicBlock*, llvm::BasicBlock*, llvm::Instruction*, llvm::Instruction*)':
+/opt/PROMPT/lib/Core/Executor.cpp:3472:17: warning: suggest parentheses around assignment used as truth value [-Wparentheses]
+ 3472 |         if (Loc = BB_src->getFirstNonPHI()->getDebugLoc()) {
+      |             ~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/opt/PROMPT/lib/Core/Executor.cpp:3477:19: warning: suggest parentheses around assignment used as truth value [-Wparentheses]
+ 3477 |           if (Loc = inst_src->getDebugLoc()) {
+      |               ~~~~^~~~~~~~~~~~~~~~~~~~~~~~~
+/opt/PROMPT/lib/Core/Executor.cpp:3486:19: warning: suggest parentheses around assignment used as truth value [-Wparentheses]
+ 3486 |           if (Loc = BB_dest->getFirstNonPHI()->getDebugLoc()){
+      |               ~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/opt/PROMPT/lib/Core/Executor.cpp:3492:19: warning: suggest parentheses around assignment used as truth value [-Wparentheses]
+ 3492 |           if (Loc = inst_dest->getDebugLoc()) {
+      |               ~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~
+/opt/PROMPT/lib/Core/Executor.cpp: In member function 'void klee::Executor::executeInstruction(klee::ExecutionState&, klee::KInstruction*)':
+/opt/PROMPT/lib/Core/Executor.cpp:3529:59: warning: format '%d' expects argument of type 'int', but argument 2 has type 'klee::KInstIterator' [-Wformat=]
+ 3529 |   klee_muqi("current instruction for this instruction is %d", state.prevPC);
+      |                                                          ~^   ~~~~~~~~~~~~
+      |                                                           |         |
+      |                                                           int       klee::KInstIterator
+/opt/PROMPT/lib/Core/Executor.cpp:3530:56: warning: format '%d' expects argument of type 'int', but argument 2 has type 'klee::KInstIterator' [-Wformat=]
+ 3530 |   klee_muqi("next instruction for this instruction is %d", state.pc);
+      |                                                       ~^   ~~~~~~~~
+      |                                                        |         |
+      |                                                        int       klee::KInstIterator
+/opt/PROMPT/lib/Core/Executor.cpp:3531:41: warning: format '%s' expects argument of type 'char*', but argument 2 has type 'llvm::StringRef' [-Wformat=]
+ 3531 |   klee_muqi("current Function name is: %s", i->getFunction()->getName());
+      |                                        ~^   ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                                         |                            |
+      |                                         char*                        llvm::StringRef
+/opt/PROMPT/lib/Core/Executor.cpp:3575:66: warning: format '%d' expects argument of type 'int', but argument 2 has type 'klee::KInstIterator' [-Wformat=]
+ 3575 |       klee_muqi("\nInside Ret, state.pc ++ , state.pc before is %d", state.pc);
+      |                                                                 ~^   ~~~~~~~~
+      |                                                                  |         |
+      |                                                                  int       klee::KInstIterator
+/opt/PROMPT/lib/Core/Executor.cpp:3676:68: warning: format '%d' expects argument of type 'int', but argument 2 has type 'klee::KInstIterator' [-Wformat=]
+ 3676 |         klee_muqi("\nInside Ret, state.pc ++ , state.pc before is %d", state.pc);
+      |                                                                   ~^   ~~~~~~~~
+      |                                                                    |         |
+      |                                                                    int       klee::KInstIterator
+/opt/PROMPT/lib/Core/Executor.cpp:3681:67: warning: format '%d' expects argument of type 'int', but argument 2 has type 'klee::KInstIterator' [-Wformat=]
+ 3681 |         klee_muqi("\nInside Ret, state.pc ++ , state.pc after is %d", state.pc);
+      |                                                                  ~^   ~~~~~~~~
+      |                                                                   |         |
+      |                                                                   int       klee::KInstIterator
+/opt/PROMPT/lib/Core/Executor.cpp:3685:45: warning: format '%s' expects argument of type 'char*', but argument 2 has type 'llvm::StringRef' [-Wformat=]
+ 3685 |       klee_muqi("In ret, Function name is: %s", caller->getFunction()->getName());
+      |                                            ~^   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                                             |                                 |
+      |                                             char*                             llvm::StringRef
+/opt/PROMPT/lib/Core/Executor.cpp:3734:40: error: 'class klee::Z3Builder' has no member named 'construct_muqi'; did you mean 'klee::ExprHashMap<std::pair<klee::Z3NodeHandle<_Z3_ast*>, unsigned int> > klee::Z3Builder::constructed'? (not accessible from this context)
+ 3734 |     Z3ASTHandle result_z3 = temp_build.construct_muqi(result,width);
+      |                                        ^~~~~~~~~~~~~~
+In file included from /opt/PROMPT/lib/Core/Executor.cpp:90:
+/opt/PROMPT/lib/Core/./Z3Builder.h:104:50: note: declared private here
+  104 |   ExprHashMap<std::pair<Z3ASTHandle, unsigned> > constructed;
+      |                                                  ^~~~~~~~~~~
+/opt/PROMPT/lib/Core/Executor.cpp:3740:30: error: 'class klee::Z3Builder' has no member named 'construct_muqi'; did you mean 'klee::ExprHashMap<std::pair<klee::Z3NodeHandle<_Z3_ast*>, unsigned int> > klee::Z3Builder::constructed'? (not accessible from this context)
+ 3740 |       result_z3 = temp_build.construct_muqi(result,width);
+      |                              ^~~~~~~~~~~~~~
+In file included from /opt/PROMPT/lib/Core/Executor.cpp:90:
+/opt/PROMPT/lib/Core/./Z3Builder.h:104:50: note: declared private here
+  104 |   ExprHashMap<std::pair<Z3ASTHandle, unsigned> > constructed;
+      |                                                  ^~~~~~~~~~~
+/opt/PROMPT/lib/Core/Executor.cpp:3745:32: error: 'class klee::Z3Builder' has no member named 'construct_muqi'; did you mean 'klee::ExprHashMap<std::pair<klee::Z3NodeHandle<_Z3_ast*>, unsigned int> > klee::Z3Builder::constructed'? (not accessible from this context)
+ 3745 |         result_z3 = temp_build.construct_muqi(result,width);
+      |                                ^~~~~~~~~~~~~~
+In file included from /opt/PROMPT/lib/Core/Executor.cpp:90:
+/opt/PROMPT/lib/Core/./Z3Builder.h:104:50: note: declared private here
+  104 |   ExprHashMap<std::pair<Z3ASTHandle, unsigned> > constructed;
+      |                                                  ^~~~~~~~~~~
+/opt/PROMPT/lib/Core/Executor.cpp:3759:25: warning: format '%d' expects argument of type 'int', but argument 2 has type 'llvm::BranchInst*' [-Wformat=]
+ 3759 |       klee_muqi("br is %d \n", bi);
+      |                        ~^      ~~
+      |                         |      |
+      |                         int    llvm::BranchInst*
+/opt/PROMPT/lib/Core/Executor.cpp:3760:36: warning: format '%d' expects argument of type 'int', but argument 2 has type 'llvm::BasicBlock*' [-Wformat=]
+ 3760 |       klee_muqi("br transfer from %d to %d\n", bi->getParent(), bi->getSuccessor(0));
+      |                                   ~^           ~~~~~~~~~~~~~~~
+      |                                    |                        |
+      |                                    int                      llvm::BasicBlock*
+/opt/PROMPT/lib/Core/Executor.cpp:3760:42: warning: format '%d' expects argument of type 'int', but argument 3 has type 'llvm::BasicBlock*' [-Wformat=]
+ 3760 |       klee_muqi("br transfer from %d to %d\n", bi->getParent(), bi->getSuccessor(0));
+      |                                         ~^                      ~~~~~~~~~~~~~~~~~~~
+      |                                          |                                      |
+      |                                          int                                    llvm::BasicBlock*
+/opt/PROMPT/lib/Core/Executor.cpp:3771:25: warning: format '%d' expects argument of type 'int', but argument 2 has type 'llvm::BranchInst*' [-Wformat=]
+ 3771 |       klee_muqi("br is %d \n", bi);
+      |                        ~^      ~~
+      |                         |      |
+      |                         int    llvm::BranchInst*
+/opt/PROMPT/lib/Core/Executor.cpp:3777:13: warning: unused variable 'temp' [-Wunused-variable]
+ 3777 |       Expr *temp = cond.get();
+      |             ^~~~
+/opt/PROMPT/lib/Core/Executor.cpp:4162:45: error: 'class klee::Z3Builder' has no member named 'construct_muqi'; did you mean 'klee::ExprHashMap<std::pair<klee::Z3NodeHandle<_Z3_ast*>, unsigned int> > klee::Z3Builder::constructed'? (not accessible from this context)
+ 4162 |     Z3ASTHandle fake_result_z3 = temp_build.construct_muqi(fake_result,width);
+      |                                             ^~~~~~~~~~~~~~
+In file included from /opt/PROMPT/lib/Core/Executor.cpp:90:
+/opt/PROMPT/lib/Core/./Z3Builder.h:104:50: note: declared private here
+  104 |   ExprHashMap<std::pair<Z3ASTHandle, unsigned> > constructed;
+      |                                                  ^~~~~~~~~~~
+/opt/PROMPT/lib/Core/Executor.cpp: In member function 'void klee::Executor::run(klee::ExecutionState&)':
+/opt/PROMPT/lib/Core/Executor.cpp:5462:30: warning: unused variable 'temp_info' [-Wunused-variable]
+ 5462 |       const InstructionInfo *temp_info = ki->info;
+      |                              ^~~~~~~~~
+/opt/PROMPT/lib/Core/Executor.cpp: In function 'int getTypeBaseInObject(const klee::MemoryObject*, llvm::Type*, unsigned int, unsigned int)':
+/opt/PROMPT/lib/Core/Executor.cpp:6767:11: warning: unused variable 'done' [-Wunused-variable]
+ 6767 |      bool done = false;
+      |           ^~~~
+/opt/PROMPT/lib/Core/Executor.cpp: In member function 'virtual void klee::Executor::runFunctionAsMain(llvm::Function*, int, char**, char**)':
+/opt/PROMPT/lib/Core/Executor.cpp:7768:2: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+ 7768 |  if (!lazyInit)
+      |  ^~
+/opt/PROMPT/lib/Core/Executor.cpp:7773:3: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+ 7773 |   if (lazyInit) {
+      |   ^~
+In file included from /root/llvm-3.8/include/llvm/ADT/Twine.h:13,
+                 from /root/llvm-3.8/include/llvm/IR/Argument.h:17,
+                 from /root/llvm-3.8/include/llvm/IR/Function.h:23,
+                 from /opt/PROMPT/include/klee/ExecutionState.h:13,
+                 from /opt/PROMPT/lib/Core/Executor.h:18,
+                 from /opt/PROMPT/lib/Core/Executor.cpp:10:
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h: In instantiation of 'void llvm::SmallVectorTemplateBase<T, true>::push_back(const T&) [with T = std::pair<const char*, std::pair<int, const char*> >]':
+/root/llvm-3.8/include/llvm/Support/CommandLine.h:515:12:   required from 'llvm::cl::ValuesClass<DataType>::ValuesClass(const char*, DataType, const char*, __va_list_tag*) [with DataType = int]'
+/root/llvm-3.8/include/llvm/Support/CommandLine.h:538:25:   required from 'llvm::cl::ValuesClass<DataType> llvm::cl::values(const char*, DataType, const char*, ...) [with DataType = int]'
+/opt/PROMPT/lib/Core/Executor.cpp:1915:23:   required from here
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h:340:11: warning: 'void* memcpy(void*, const void*, size_t)' writing to an object of type 'struct std::pair<const char*, std::pair<int, const char*> >' with no trivial copy-assignment; use copy-assignment or copy-initialization instead [-Wclass-memaccess]
+  340 |     memcpy(this->end(), &Elt, sizeof(T));
+      |     ~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /usr/include/c++/11/utility:70,
+                 from /root/llvm-3.8/include/llvm/ADT/iterator_range.h:22,
+                 from /root/llvm-3.8/include/llvm/IR/Function.h:21,
+                 from /opt/PROMPT/include/klee/ExecutionState.h:13,
+                 from /opt/PROMPT/lib/Core/Executor.h:18,
+                 from /opt/PROMPT/lib/Core/Executor.cpp:10:
+/usr/include/c++/11/bits/stl_pair.h:211:12: note: 'struct std::pair<const char*, std::pair<int, const char*> >' declared here
+  211 |     struct pair
+      |            ^~~~
+In file included from /root/llvm-3.8/include/llvm/ADT/Twine.h:13,
+                 from /root/llvm-3.8/include/llvm/IR/Argument.h:17,
+                 from /root/llvm-3.8/include/llvm/IR/Function.h:23,
+                 from /opt/PROMPT/include/klee/ExecutionState.h:13,
+                 from /opt/PROMPT/lib/Core/Executor.h:18,
+                 from /opt/PROMPT/lib/Core/Executor.cpp:10:
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h: In instantiation of 'static void llvm::SmallVectorTemplateBase<T, true>::uninitialized_copy(T1*, T1*, T2*, typename std::enable_if<std::is_same<typename std::remove_const<T1>::type, T2>::value>::type*) [with T1 = std::pair<const char*, std::pair<int, const char*> >; T2 = std::pair<const char*, std::pair<int, const char*> >; T = std::pair<const char*, std::pair<int, const char*> >; typename std::enable_if<std::is_same<typename std::remove_const<T1>::type, T2>::value>::type = void; typename std::remove_const<T1>::type = std::pair<const char*, std::pair<int, const char*> >]':
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h:305:23:   required from 'static void llvm::SmallVectorTemplateBase<T, true>::uninitialized_move(It1, It1, It2) [with It1 = std::pair<const char*, std::pair<int, const char*> >*; It2 = std::pair<const char*, std::pair<int, const char*> >*; T = std::pair<const char*, std::pair<int, const char*> >]'
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h:838:27:   required from 'llvm::SmallVectorImpl<T>& llvm::SmallVectorImpl<T>::operator=(llvm::SmallVectorImpl<T>&&) [with T = std::pair<const char*, std::pair<int, const char*> >]'
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h:907:36:   required from 'llvm::SmallVector<T, N>::SmallVector(llvm::SmallVector<T, N>&&) [with T = std::pair<const char*, std::pair<int, const char*> >; unsigned int N = 4]'
+/root/llvm-3.8/include/llvm/Support/CommandLine.h:504:33:   required from 'llvm::cl::ValuesClass<DataType> llvm::cl::values(const char*, DataType, const char*, ...) [with DataType = int]'
+/opt/PROMPT/lib/Core/Executor.cpp:1915:23:   required from here
+/root/llvm-3.8/include/llvm/ADT/SmallVector.h:328:13: warning: 'void* memcpy(void*, const void*, size_t)' writing to an object of type 'struct std::pair<const char*, std::pair<int, const char*> >' with no trivial copy-assignment; use copy-assignment or copy-initialization instead [-Wclass-memaccess]
+  328 |       memcpy(Dest, I, (E - I) * sizeof(T));
+      |       ~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /usr/include/c++/11/utility:70,
+                 from /root/llvm-3.8/include/llvm/ADT/iterator_range.h:22,
+                 from /root/llvm-3.8/include/llvm/IR/Function.h:21,
+                 from /opt/PROMPT/include/klee/ExecutionState.h:13,
+                 from /opt/PROMPT/lib/Core/Executor.h:18,
+                 from /opt/PROMPT/lib/Core/Executor.cpp:10:
+/usr/include/c++/11/bits/stl_pair.h:211:12: note: 'struct std::pair<const char*, std::pair<int, const char*> >' declared here
+  211 |     struct pair
+      |            ^~~~
+/opt/PROMPT/lib/Core/Executor.cpp: In function 'llvm::Type* getEnclosingObjectType(llvm::Instruction*)':
+/opt/PROMPT/lib/Core/Executor.cpp:892:9: warning: this statement may fall through [-Wimplicit-fallthrough=]
+  892 |         }
+      |         ^
+/opt/PROMPT/lib/Core/Executor.cpp:893:9: note: here
+  893 |         default: {
+      |         ^~~~~~~
+/opt/PROMPT/lib/Core/Executor.cpp: In function 'llvm::Type* checkAndComputeBitcastInfo(llvm::Instruction*, std::string)':
+/opt/PROMPT/lib/Core/Executor.cpp:1091:10: warning: this statement may fall through [-Wimplicit-fallthrough=]
+ 1091 |          } // will also analyze bitcast operands!
+      |          ^
+/opt/PROMPT/lib/Core/Executor.cpp:1092:10: note: here
+ 1092 |          default: {
+      |          ^~~~~~~
+make[2]: *** [lib/Core/CMakeFiles/kleeCore.dir/build.make:141: lib/Core/CMakeFiles/kleeCore.dir/Executor.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:683: lib/Core/CMakeFiles/kleeCore.dir/all] Error 2
+make: *** [Makefile:130: all] Error 2
+(angr) root@0d97d57fc6f7:/opt/PROMPT/build# 
+
+
+STILL. GO THROUGH DIAGNOSIS.TXT AND PROMPT-REFERENCE PROPERLY
+
+GitHub Copilot: I see the issues from diagnosis.txt. There are two problems:
+
+1. **Missing `construct_muqi` function** - need to add a public shim
+2. **LLVM ValueMap error** - need to fix a C++11 compatibility issue
+
+Let's fix both:
+
+```bash
+# First, check what's in Z3Builder.h
+grep -n "construct" /opt/PROMPT/lib/Core/Z3Builder.h | head -20
+```
+
+Then add the shim function:
+
+```bash
+# Add the public construct_muqi shim to Z3Builder.h in lib/Core
+# Find the public section and add the function
+sed -i '/public:/a\  Z3ASTHandle construct_muqi(ref<Expr> e, int *width) { return construct(e, width); }' /opt/PROMPT/lib/Core/Z3Builder.h
+```
+
+For the ValueMap error, we need to fix the LLVM header issue:
+
+```bash
+# Fix the ValueMap.h conversion error by patching the LLVM header
+sed -i 's/return MDMap;/return static_cast<bool>(MDMap);/' /root/llvm-3.8/include/llvm/IR/ValueMap.h
+```
+
+Then rebuild:
+
+```bash
+cd /opt/PROMPT/build
+make -j$(nproc)
+```
+
+Let me know the output!
+
+User: PROMPT is done 
+
+(angr) root@0d97d57fc6f7:~/work/PROMPT/build# cd ..
+(angr) root@0d97d57fc6f7:~/work/PROMPT# ls
+ACKNOWLEDGEMENTS.TXT  CMakeLists.txt  JASE_benchmarks  LICENSE      PROMPT_examples  README.md  caseStudies  docs     klee_examples  promptToDo.txt  scripts  tools      utils
+CMakeFiles            INSTALL.txt     KLEELICENSE.TXT  LICENSE.TXT  README-CMake.md  build      cmake        include  lib            runtime         test     unittests
+(angr) root@0d97d57fc6f7:~/work/PROMPT# cd ..
+(angr) root@0d97d57fc6f7:~/work# ls
+PROMPT
+(angr) root@0d97d57fc6f7:~/work# pwd
+/root/work
+(angr) root@0d97d57fc6f7:~/work# tree -L 2
+.
+`-- PROMPT
+    |-- ACKNOWLEDGEMENTS.TXT
+    |-- CMakeFiles
+    |-- CMakeLists.txt
+    |-- INSTALL.txt
+    |-- JASE_benchmarks
+    |-- KLEELICENSE.TXT
+    |-- LICENSE
+    |-- LICENSE.TXT
+    |-- PROMPT_examples
+    |-- README-CMake.md
+    |-- README.md
+    |-- build
+    |-- caseStudies
+    |-- cmake
+    |-- docs
+    |-- include
+    |-- klee_examples
+    |-- lib
+    |-- promptToDo.txt
+    |-- runtime
+    |-- scripts
+    |-- test
+    |-- tools
+    |-- unittests
+    `-- utils
+
+17 directories, 9 files
+(angr) root@0d97d57fc6f7:~/work# cd /opt
+(angr) root@0d97d57fc6f7:/opt# tree -L 2
+.
+|-- PROMPT
+|   |-- ACKNOWLEDGEMENTS.TXT
+|   |-- CMakeFiles
+|   |-- CMakeLists.txt
+|   |-- INSTALL.txt
+|   |-- JASE_benchmarks
+|   |-- KLEELICENSE.TXT
+|   |-- LICENSE
+|   |-- LICENSE.TXT
+|   |-- PROMPT_examples
+|   |-- README-CMake.md
+|   |-- README.md
+|   |-- build
+|   |-- caseStudies
+|   |-- cmake
+|   |-- docs
+|   |-- include
+|   |-- klee_examples
+|   |-- lib
+|   |-- promptToDo.txt
+|   |-- runtime
+|   |-- scripts
+|   |-- test
+|   |-- tools
+|   |-- unittests
+|   `-- utils
+|-- angr-dev
+|   |-- Dockerfile
+|   |-- LICENSE
+|   |-- README.md
+|   |-- admin
+|   |-- ailment
+|   |-- angr
+|   |-- angr-doc
+|   |-- angr-management
+|   |-- archinfo
+|   |-- archr
+|   |-- binaries
+|   |-- claripy
+|   |-- cle
+|   |-- extremely-simple-setup.sh
+|   |-- fix_macOS.sh
+|   |-- git_all.bat
+|   |-- git_all.sh
+|   |-- pylintrc
+|   |-- pypy_venv.sh
+|   |-- pyvex
+|   |-- setup.ps1
+|   |-- setup.sh
+|   |-- shell.nix
+|   `-- standard_logging.py
+|-- klee-uclibc
+|   |-- COPYING.LIB
+|   |-- COPYING.LIB.boilerplate
+|   |-- Changelog
+|   |-- DEDICATION.mjn3
+|   |-- INSTALL
+|   |-- MAINTAINERS
+|   |-- Makefile
+|   |-- Makefile.in
+|   |-- Makefile.klee
+|   |-- Makefile.klee.in
+|   |-- Makerules
+|   |-- README
+|   |-- README.md
+|   |-- Rules.mak
+|   |-- TODO
+|   |-- config.log
+|   |-- configure
+|   |-- docs
+|   |-- extra
+|   |-- include
+|   |-- klee-premade-configs
+|   |-- ldso
+|   |-- lib
+|   |-- libc
+|   |-- libcrypt
+|   |-- libintl
+|   |-- libm
+|   |-- libnsl
+|   |-- libpthread
+|   |-- libresolv
+|   |-- librt
+|   |-- libutil
+|   |-- test
+|   `-- utils
+|-- z3
+|   |-- LICENSE.txt
+|   |-- bin
+|   `-- include
+`-- z3-4.9.1-x64-glibc-2.31.zip
+
+50 directories, 41 files
+(angr) root@0d97d57fc6f7:/opt# 
+
+GitHub Copilot: Excellent! PROMPT is complete. Now let's continue with **Step 8: Install and Patch Ghidra**:
+
+---
+
+## **Step 8: Install and Patch Ghidra**
+
+```bash
+cd /opt
+
+# Download Ghidra 10.0
+wget https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_10.0_build/ghidra_10.0_PUBLIC_20210621.zip
+
+# Unzip
+unzip ghidra_10.0_PUBLIC_20210621.zip
+mv ghidra_10.0_PUBLIC ghidra
+
+# Add Ghidra to PATH
+echo 'export GHIDRA_HOME="/opt/ghidra"' >> ~/.bashrc
+echo 'export PATH="$GHIDRA_HOME:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Verify Java is available (Ghidra needs it)
+java -version
+```
+
+If that works, apply the D-Helix patch:
+
+```bash
+cd /opt/ghidra
+
+# The ghidra_diff.patch is for disabling heuristics - check if it applies
+patch -p1 --dry-run < /workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix/ghidra_diff.patch
+
+# If dry-run is successful, apply it
+patch -p1 < /workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix/ghidra_diff.patch
+```
+
+Let me know the results!
+
+User: (angr) root@0d97d57fc6f7:/opt/ghidra# patch -p1 --dry-run < /workspace/home/aiclub1/B220032CS_Jaefar/fyp/repos/jaefar/DH-v3/D-helix/ghidra_diff.patch
+can't find file to patch at input line 5
+Perhaps you used the wrong -p or --strip option?
+The text leading up to this was:
+--------------------------
+|diff --git a/Ghidra/Features/Base/.launch/Ghidra Code Coverage.launch b/Ghidra/Features/Base/.launch/Ghidra Code Coverage.launch
+|index ae7716504..7373b0c81 100644
+|--- a/Ghidra/Features/Base/.launch/Ghidra Code Coverage.launch
+|+++ b/Ghidra/Features/Base/.launch/Ghidra Code Coverage.launch
+--------------------------
+File to patch: 
+
+GitHub Copilot: The Ghidra patch is meant for **source code**, not the pre-built release. According to the README, you have two options:
+
+1. **Use pre-built Ghidra as-is** (simpler - for SYMDIFF testing)
+2. **Clone and build Ghidra from source** (complex - needed for Tuner with heuristics disabled)
+
+For now, let's skip the patch and complete the setup. The pre-built Ghidra works for basic D-Helix operations. Press Ctrl+C to exit the patch prompt if it's waiting.
+
+---
+
+## **Step 9: Final Configuration**
+
+```bash
+# Add PROMPT/klee to PATH
+echo 'export PATH="/opt/PROMPT/build/bin:$PATH"' >> ~/.bashrc
+echo 'export PATH="/root/work/PROMPT/build/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Verify all components
+echo "=== Checking PROMPT/KLEE ===" 
+/opt/PROMPT/build/bin/klee --version 2>/dev/null || /root/work/PROMPT/build/bin/klee --version
+
+echo "=== Checking angr ===" 
+source /root/.virtualenvs/angr/bin/activate
+python -c "import angr; print('angr version:', angr.__version__)"
+
+echo "=== Checking Z3 ===" 
+z3 --version
+
+echo "=== Checking Ghidra ===" 
+ls /opt/ghidra/ghidraRun
+
+echo "=== Checking clang-3.8 ===" 
+/root/llvm-3.8/bin/clang --version
+```
+
+Let me know the output and we can then proceed to run a D-Helix test!

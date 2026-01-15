@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# D-Helix generated files
+D-helix/D_helix_angr/test_muqi/generated_function_c/
+D-helix/D_helix_angr/test_muqi/generatedbc/
+D-helix/D_helix_angr/test_muqi/model_prompt/
+D-helix/D_helix_angr/test_muqi/log_klee/
+D-helix/D_helix_angr/test_muqi/z3/
+D-helix/D_helix_angr/test_muqi/diff/
+D-helix/D_helix_angr/test_muqi/objdump/
+D-helix/D_helix_angr/function_name/
+D-helix/D_helix_angr/log_angr
+D-helix/D_helix_angr/log_klee
+D-helix/D_helix_angr/both_work
+D-helix/D_helix_angr/diff_result
+D-helix/D_helix_angr/run_output.log
+D-helix/D_helix_angr/temp_found_file.txt
+
+# Temporary files
+/tmp/
+*.tmp
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
