@@ -1,27 +1,11 @@
-Here is the properly formatted guide for setting up the D-Helix environment on Ubuntu 20.04. The commands have been preserved exactly as provided in the source file, structured into clear steps for readability.
+1. ubuntu 20.04 container
 
-# D-Helix Environment Setup Guide
-
-**OS:** Ubuntu 20.04 Container
-
----
-
-### 1. Initial Setup and Repository Cloning
-
-Create the working directory and clone the repository.
-
-```bash
 mkdir -p /root/work
 cd /root/work && git clone https://github.com/tbd-mavenkoders/D-helix-fixed.git
+
 cd /root
 
-```
-
-### 2. Dependencies and Python Setup
-
-#### 2a. Install Base System Packages
-
-```bash
+2. a install these packages
 apt-get update && apt-get install -y \
     build-essential \
     git \
@@ -52,13 +36,7 @@ apt-get update && apt-get install -y \
     nano \
     sudo
 
-```
-
-#### 2b. Install Python 3.8 and Configure Alternatives
-
-This step installs Python 3.8 via the deadsnakes PPA and configures it as the default python version.
-
-```bash
+2. b
 apt-get update && \
 apt-get install -y software-properties-common && \
 add-apt-repository ppa:deadsnakes/ppa -y && \
@@ -71,11 +49,9 @@ update-alternatives --install /usr/bin/python python /usr/bin/python3.8 1 && \
 ln -sf /usr/bin/python3.8 /usr/bin/python && \
 python -m pip install --upgrade pip
 
-```
 
-### 3. Install GCC 11
+3. install gcc 11
 
-```bash
 cd /root
 add-apt-repository -y ppa:ubuntu-toolchain-r/test
 apt-get update
@@ -84,11 +60,8 @@ update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 110
 update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 110
 gcc --version
 
-```
+4. install clang 16
 
-### 4. Install Clang 16
-
-```bash
 cd /root
 wget https://apt.llvm.org/llvm.sh
 chmod +x llvm.sh
@@ -97,13 +70,9 @@ update-alternatives --install /usr/bin/clang clang /usr/bin/clang-16 160
 update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-16 160
 clang --version
 
-```
 
-### 5. Install LLVM 3.8 and Z3
+5. install llvm 3.8
 
-#### Install LLVM 3.8
-
-```bash
 cd /root
 wget https://releases.llvm.org/3.8.0/clang+llvm-3.8.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz
 tar -xf clang+llvm-3.8.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz
@@ -112,11 +81,8 @@ export PATH="/root/llvm-3.8/bin:$PATH"
 echo 'export PATH="/root/llvm-3.8/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 
-```
+5. z3
 
-#### Install Z3 Solver
-
-```bash
 cd /root
 wget https://github.com/Z3Prover/z3/releases/download/z3-4.9.1/z3-4.9.1-x64-glibc-2.31.zip
 unzip z3-4.9.1-x64-glibc-2.31.zip
@@ -131,15 +97,9 @@ source ~/.bashrc
 # Verify
 z3 --version
 
-```
+6. install and patch angr
 
-### 6. Install and Patch Angr
-
-#### 6a. Setup Angr Development Environment
-
-Clone `angr-dev`, checkout specific commits, and install dependencies.
-
-```bash
+a. 
 pip3 install virtualenv
 
 # Clone angr-dev
@@ -173,9 +133,9 @@ apt-get install -y \
 source /root/.virtualenvs/angr/bin/activate
 pip install "setuptools==67.8.0" "pip==23.3.2"
 
+
 cd /root/angr-dev
 
-# Checkout specific component versions
 cd /root/angr-dev/archinfo && git checkout 4eea2b81e78a2d902d6c7c0ff7168b304b9d3b8c
 cd /root/angr-dev/pyvex && git checkout de7f92e126fbbaa61287e2a647be6f2871d56032
 cd /root/angr-dev/cle && git checkout 7024cd3fc479af221cc3070b0ddca1ac20ca1a22
@@ -185,7 +145,6 @@ cd /root/angr-dev/angr && git checkout 6ef773615ff70c5c334ee16945e22e9005a8c82d
 
 cd /root/angr-dev
 
-# Install components
 pip install --no-build-isolation -e ./archinfo
 pip install --no-build-isolation -e ./pyvex
 pip install --no-build-isolation -e ./cle
@@ -193,13 +152,8 @@ pip install --no-build-isolation -e ./claripy
 pip install --no-build-isolation -e ./ailment
 pip install --no-build-isolation -e ./angr
 
-```
+6. b patching angr 
 
-#### 6b. Patching Angr
-
-Apply custom patches and rebuild Pyvex.
-
-```bash
 source /root/.virtualenvs/angr/bin/activate
 cd /root/angr-dev
 
@@ -224,28 +178,29 @@ pip uninstall -y pyvex
 python setup.py build
 pip install --no-build-isolation -e .
 
-# Verify angr installation
+
+# to finally verify angr
+
 python -c "import pyvex; print('pyvex loaded')"
 python -c "import angr; print('angr version:', angr.__version__)"
 
-```
 
-### 7. Install KLEE-uClibc
+7. install klee-ulibc
 
-```bash
 cd /root
 git clone https://github.com/klee/klee-uclibc.git
 cd klee-uclibc
 
+
 apt-get install -y libncurses5-dev libncursesw5-dev
 apt-get install -y gcc-multilib g++-multilib
 
-# Copy necessary libraries
 cp /usr/lib/gcc/x86_64-linux-gnu/9/crt*.o /usr/lib/
+
 # Copy the missing libgcc libraries as well (to prevent the next error)
 cp /usr/lib/gcc/x86_64-linux-gnu/9/libgcc* /usr/lib/
 
-# Go back to the build folder
+#  Go back to the build folder
 cd /root/klee-uclibc
 
 # Configure 
@@ -256,13 +211,8 @@ cd /root/klee-uclibc
 # Build
 make -j$(nproc)
 
-```
+8. PROMPT setup
 
-### 8. PROMPT Setup
-
-Install dependencies, patch PROMPT, and apply fixes to LLVM headers and Z3Builder.
-
-```bash
 apt-get install -y libgoogle-perftools-dev
 apt-get install -y flex bison
 python -m pip install lit
@@ -276,6 +226,8 @@ patch -p1 < /root/work/D-helix-fixed/D-helix/prompt_diff.patch
 
 # Create build directory
 mkdir build && cd build
+
+
 
 cmake \
   -DCMAKE_CXX_FLAGS="-D_GLIBCXX_USE_CXX11_ABI=0" \
@@ -293,6 +245,8 @@ cmake \
   -DLLVMCXX=/root/llvm-3.8/bin/clang++ \
   ../
 
+
+
 cp /root/PROMPT/lib/Solver/Z3Builder.h /root/PROMPT/lib/Expr/
 cd /root/PROMPT/build
 
@@ -300,16 +254,19 @@ cd /root/PROMPT/build
 sed -i 's/return MDMap;/return (bool)MDMap;/g' /root/llvm-3.8/include/llvm/IR/ValueMap.h
 
 # copy z3builder.h to the right place 
+
 cp /root/PROMPT/lib/Expr/Z3Builder.h /root/PROMPT/lib/Core/
 
 # inject header function
+
 sed -i '/Z3ASTHandle construct_muqi_solver(ref<Expr> e, int \*width_out);/a \\tZ3ASTHandle construct_muqi(ref<Expr> e, int width) { int w = width; return construct_muqi_solver(e, \&w); }' /root/PROMPT/lib/Core/Z3Builder.h
 
-# Remove the line we added previously (to avoid duplicates)
+#  Remove the line we added previously (to avoid duplicates)
 sed -i '/construct_muqi(ref<Expr>/d' /root/PROMPT/lib/Core/Z3Builder.h
 
-# Insert the function again, but explicitly add "public:" to force visibility
+#  Insert the function again, but explicitly add "public:" to force visibility
 sed -i '/Z3ASTHandle construct_muqi_solver(ref<Expr> e, int \*width_out);/a public: Z3ASTHandle construct_muqi(ref<Expr> e, int width) { int w = width; return construct_muqi_solver(e, \&w); }' /root/PROMPT/lib/Core/Z3Builder.h
+
 
 # Remove the previous incorrect patch
 sed -i '/construct_muqi(ref<Expr>/d' /root/PROMPT/lib/Core/Z3Builder.h
@@ -317,11 +274,8 @@ sed -i '/construct_muqi(ref<Expr>/d' /root/PROMPT/lib/Core/Z3Builder.h
 # Insert the CORRECTED patch (Public + Pointer argument)
 sed -i '/Z3ASTHandle construct_muqi_solver(ref<Expr> e, int \*width_out);/a public: Z3ASTHandle construct_muqi(ref<Expr> e, int *width) { return construct_muqi_solver(e, width); }' /root/PROMPT/lib/Core/Z3Builder.h
 
-```
+9. Install ghidra
 
-### 9. Install Ghidra
-
-```bash
 cd /root
 
 # Download Ghidra 10.0
@@ -339,11 +293,9 @@ source ~/.bashrc
 # Verify Java is available (Ghidra needs it)
 java -version
 
-```
 
-### 10. Final Configuration and Verification
+10. final configuration
 
-```bash
 # Add PROMPT/klee to PATH
 echo 'export PATH="/root/PROMPT/build/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
@@ -365,13 +317,9 @@ ls /root/ghidra/ghidraRun
 echo "=== Checking clang-3.8 ===" 
 /root/llvm-3.8/bin/clang --version
 
-```
 
-### 11. Additional Steps
+11. additional steps
 
-Update python dependencies and fix the PATH within the virtual environment.
-
-```bash
 source /root/.virtualenvs/angr/bin/activate
 pip install wrapt-timeout-decorator six numpy
 
@@ -389,13 +337,10 @@ source /root/.virtualenvs/angr/bin/activate
 klee --version
 which klee
 
-```
 
-### 12. Simple Test Program Creation
 
-Create directory structure and a test C binary.
+12. Simple test program creation
 
-```bash
 # Navigate to D_helix_angr
 cd /root/work/D-helix-fixed/D-helix/D_helix_angr
 
@@ -414,6 +359,7 @@ mkdir -p test_muqi/generated_function_c/log_for_compile
 mkdir -p test_muqi/generatedll
 mkdir -p test_muqi/generatedklee
 mkdir -p test_muqi/diff
+
 
 # Create a simple test C program
 cat > /tmp/test_simple.c << 'EOF'
@@ -442,5 +388,3 @@ clang-16 -O0 -g /tmp/test_simple.c -o test_muqi/originalclang/test_simple
 # Verify binary was created
 ls -lh test_muqi/originalclang/
 file test_muqi/originalclang/test_simple
-
-```
