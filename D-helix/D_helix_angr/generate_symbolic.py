@@ -366,15 +366,15 @@ def main_each_function_klee(i,function_name_list,filename,filepath_originalclang
             #f.write("global settings: array size 0;\ndata models:(0 = w) where w is argsize "+function_name+" arg 0;\nfunction models:\nlifecycle model:\n    entry-point "+ function_name)
             f.close()
             if foreverloop == False:
-               print("\ntimeout 30s /root/work/PROMPT/build/bin/klee  -prose-api-model="+filepath_prompt_model_on_function+ "  --loop-bound=2  --search=bfs --solver-backend=z3 --posix-runtime " + filepath_generatedbc + ' 1> '+ filepath_log_klee +' 2> '+ filepath_log_klee_error)
+               print("\ntimeout 30s /root/PROMPT/build/bin/klee  -prose-api-model="+filepath_prompt_model_on_function+ "  --loop-bound=2  --search=bfs --solver-backend=z3 --posix-runtime " + filepath_generatedbc + ' 1> '+ filepath_log_klee +' 2> '+ filepath_log_klee_error)
             else:
-               print("\ntimeout 30s /root/work/PROMPT/build/bin/klee  -prose-api-model="+filepath_prompt_model_on_function+ " --search=bfs --solver-backend=z3 --posix-runtime " + filepath_generatedbc + " > "+ filepath_log_klee + " 2> "+ filepath_log_klee_error)  
+               print("\ntimeout 30s /root/PROMPT/build/bin/klee  -prose-api-model="+filepath_prompt_model_on_function+ " --search=bfs --solver-backend=z3 --posix-runtime " + filepath_generatedbc + " > "+ filepath_log_klee + " 2> "+ filepath_log_klee_error)  
             #'''
             #os.system("timeout 30s /home/friends/muqi/PROMPT/build2/bin/klee  -prose-api-model="+filepath_prompt_model_on_function+ " --search=bfs --solver-backend=z3 --posix-runtime " + filepath_generatedbc + " > "+ filepath_log_klee + ' 2> '+ filepath_log_klee_error)
             if foreverloop == False:
-               run_cmd("/root/work/PROMPT/build/bin/klee  -prose-api-model="+filepath_prompt_model_on_function+ "  --loop-bound=2  --search=bfs --solver-backend=z3 --posix-runtime " + filepath_generatedbc + ' 1> '+ filepath_log_klee +' 2> '+ filepath_log_klee_error,30)
+               run_cmd("/root/PROMPT/build/bin/klee  -prose-api-model="+filepath_prompt_model_on_function+ "  --loop-bound=2  --search=bfs --solver-backend=z3 --posix-runtime " + filepath_generatedbc + ' 1> '+ filepath_log_klee +' 2> '+ filepath_log_klee_error,30)
             else:
-               run_cmd("/root/work/PROMPT/build/bin/klee  -prose-api-model="+filepath_prompt_model_on_function+ "   --search=bfs --solver-backend=z3 --posix-runtime " + filepath_generatedbc + ' 1> '+ filepath_log_klee +' 2> '+ filepath_log_klee_error,30)
+               run_cmd("/root/PROMPT/build/bin/klee  -prose-api-model="+filepath_prompt_model_on_function+ "   --search=bfs --solver-backend=z3 --posix-runtime " + filepath_generatedbc + ' 1> '+ filepath_log_klee +' 2> '+ filepath_log_klee_error,30)
 
 #@func_set_timeout(120)
 #@timeout_decorator.timeout(30, use_signals=False)
