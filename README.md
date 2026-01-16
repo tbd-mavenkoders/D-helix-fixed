@@ -444,3 +444,192 @@ ls -lh test_muqi/originalclang/
 file test_muqi/originalclang/test_simple
 
 ```
+
+---
+
+## FastAPI REST API Server
+
+D-Helix now includes a FastAPI REST API server for programmatic binary verification.
+
+### Installation
+
+```bash
+# Navigate to fastapi_server directory
+cd /root/work/D-helix-fixed/fastapi_server
+
+# Activate angr virtual environment
+source /root/.virtualenvs/angr/bin/activate
+
+# Install FastAPI dependencies
+pip install -r requirements_api.txt
+
+```
+
+### Starting the Server
+
+```bash
+# Start the FastAPI server (single worker)
+python api_server.py
+
+# Server runs on http://0.0.0.0:10012
+# API documentation available at http://localhost:10012/docs
+
+```
+
+### Running Tests
+
+```bash
+# In a separate terminal, activate the environment
+source /root/.virtualenvs/angr/bin/activate
+cd /root/work/D-helix-fixed/fastapi_server
+
+# Run the test client
+python test_api_client.py
+
+```
+
+### API Endpoints
+
+- `POST /verify` - Verify binary against decompiled code
+  - **Parameters**:
+    - `binary` (file): Binary executable to verify
+    - `decompiled_code` (file): Decompiled C source code
+    - `function_name` (string): Name of function to verify
+  - **Returns**: Verification result (sat/unsat), Z3 formula, counterexample if bug found
+
+- `GET /health` - Health check endpoint
+- `GET /docs` - Interactive API documentation (Swagger UI)
+
+### Example Usage
+
+```python
+import requests
+
+# Upload files for verification
+with open('binary_file', 'rb') as binary, \
+     open('decompiled.c', 'r') as code:
+    
+    files = {
+        'binary': ('binary', binary, 'application/octet-stream'),
+        'decompiled_code': ('code.c', code.read(), 'text/plain')
+    }
+    
+    data = {'function_name': 'add'}
+    
+    response = requests.post(
+        'http://localhost:10012/verify',
+        files=files,
+        data=data
+    )
+    
+    result = response.json()
+    print(f"Result: {result['result']}")  # 'sat' or 'unsat'
+    if result['result'] == 'sat':
+        print(f"Bug found! Counterexample: {result['counterexample']}")
+
+```
+
+### Increasing Parallelism
+
+For systems with multiple CPUs (e.g., 24 CPUs, 256GB RAM), you can increase throughput **without modifying code**:
+
+#### Option 1: Multiple Uvicorn Workers
+
+```bash
+# Run with 12 workers (half of available CPUs recommended)
+uvicorn api_server:app --host 0.0.0.0 --port 10012 --workers 12
+
+```
+
+#### Option 2: Gunicorn with Uvicorn Workers
+
+```bash
+# Install gunicorn
+pip install gunicorn
+
+# Run with 12 worker processes
+gunicorn api_server:app \
+    --workers 12 \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 0.0.0.0:10012 \
+    --timeout 300
+
+```
+
+#### Option 3: Multiple Server Instances + Load Balancer
+
+```bash
+# Start multiple instances on different ports
+python api_server.py &  # Port 10012
+PORT=10013 python api_server.py &
+PORT=10014 python api_server.py &
+# ... up to 24 instances
+
+# Use nginx or HAProxy to load balance across instances
+
+```
+
+#### Option 4: Docker Compose Scale (Recommended)
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+services:
+  d-helix-api:
+    build: .
+    ports:
+      - "10012-10035:10012"
+    deploy:
+      replicas: 12  # Scale to 12 instances
+
+```
+
+```bash
+docker-compose up --scale d-helix-api=12
+
+```
+
+**Resource Recommendations for 24 CPUs / 256GB RAM:**
+- **12-16 workers**: Leaves room for KLEE, Angr, and Z3 subprocesses
+- **~10-16GB RAM per worker**: Each verification can use 2-4GB peak
+- **Monitor with**: `htop`, `docker stats`, or `nvidia-smi` (if using GPU)
+
+### Production Deployment
+
+For production use:
+
+```bash
+# Install production server
+pip install gunicorn
+
+# Run with systemd service
+sudo tee /etc/systemd/system/d-helix-api.service > /dev/null << 'EOF'
+[Unit]
+Description=D-Helix Verification API
+After=network.target
+
+[Service]
+Type=notify
+User=root
+WorkingDirectory=/root/work/D-helix-fixed/fastapi_server
+Environment="PATH=/root/.virtualenvs/angr/bin:/root/PROMPT/build/bin:/root/llvm-3.8/bin:/root/z3/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/root/.virtualenvs/angr/bin/gunicorn api_server:app \
+    --workers 12 \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 0.0.0.0:10012 \
+    --timeout 300
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Enable and start service
+sudo systemctl daemon-reload
+sudo systemctl enable d-helix-api
+sudo systemctl start d-helix-api
+
+# Check status
+sudo systemctl status d-helix-api
+
+```

@@ -155,4 +155,38 @@ ENV PATH="/root/PROMPT/build/bin:$PATH"
 # Install python deps into the angr venv
 RUN /root/.virtualenvs/angr/bin/pip install wrapt-timeout-decorator six numpy
 
-# Would you like me to create the docker-compose file for this as well?
+# --- Step 12: Test Setup ---
+# Create test directory structure
+RUN cd /root/work/D-helix-fixed/D-helix/D_helix_angr && \
+    mkdir -p function_name test_muqi/originalclang test_muqi/generated_whole_c \
+    test_muqi/generated_html test_muqi/generated_function_c test_muqi/generatedbc \
+    test_muqi/model_prompt test_muqi/z3 test_muqi/log \
+    test_muqi/generated_function_c/project_folder \
+    test_muqi/generated_function_c/log_for_compile \
+    test_muqi/generatedll test_muqi/generatedklee test_muqi/diff
+
+# Create a simple test binary
+RUN echo '#include <stdio.h>\n\
+int add(int a, int b) { return a + b; }\n\
+int subtract(int a, int b) { return a - b; }\n\
+int main() {\n\
+    int x = 5, y = 3;\n\
+    printf("Add: %d\\n", add(x, y));\n\
+    printf("Sub: %d\\n", subtract(x, y));\n\
+    return 0;\n\
+}' > /tmp/test_simple.c && \
+    clang-16 -O0 -g /tmp/test_simple.c -o /root/work/D-helix-fixed/D-helix/D_helix_angr/test_muqi/originalclang/test_simple_2
+
+# --- Step 13: Install FastAPI Dependencies ---
+RUN cd /root/work/D-helix-fixed/fastapi_server && \
+    /root/.virtualenvs/angr/bin/pip install -r requirements_api.txt
+
+# Expose FastAPI port
+EXPOSE 10012
+
+# Set working directory to fastapi_server
+WORKDIR /root/work/D-helix-fixed/fastapi_server
+
+# Default command: Start FastAPI server with single worker
+# For multiple workers, override with: docker run -p 10012:10012 d-helix uvicorn api_server:app --host 0.0.0.0 --port 10012 --workers 12
+CMD ["/root/.virtualenvs/angr/bin/python", "api_server.py"]
