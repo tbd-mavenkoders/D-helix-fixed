@@ -74,8 +74,8 @@ RUN pip3 install virtualenv && \
     libgcc1:i386 libc6:i386 nasm binutils-multiarch qtdeclarative5-dev \
     libpixman-1-dev libglib2.0-dev debian-archive-keyring debootstrap libtool \
     libc6-dev-i386 && \
-    ./setup.sh -e angr && \
     /root/.virtualenvs/angr/bin/pip install "setuptools==67.8.0" "pip==23.3.2" && \
+    ./setup.sh -e angr && \
     # Checkout specific commits
     cd /root/angr-dev/archinfo && git checkout 4eea2b81e78a2d902d6c7c0ff7168b304b9d3b8c && \
     cd /root/angr-dev/pyvex && git checkout de7f92e126fbbaa61287e2a647be6f2871d56032 && \
