@@ -64,15 +64,14 @@ ENV PYTHONPATH="/root/z3/bin/python:${PYTHONPATH}"
 # We combine these to keep layers smaller. 
 # Note: Virtualenv activation in Docker requires specific handling. 
 # We will install packages into the venv by calling the venv's pip directly.
+
 RUN pip3 install virtualenv && \
     git clone https://github.com/angr/angr-dev.git && \
     cd angr-dev && \
     git checkout b2198226e6194310c57a4b50ae9a6c82b1b6cd7f && \
     \
-    # PATCH setup.sh to stop setuptools from breaking archinfo
-    sed -i \
-      's/pip install -U pip "setuptools>=59" wheel cffi unicorn==1.0.2rc4/pip install "pip==23.3.2" "setuptools==67.8.0" "wheel<0.41" cffi unicorn==1.0.2rc4/' \
-      setup.sh && \
+    # disable package installation inside setup.sh
+    sed -i 's/^INSTALL=1$/INSTALL=0/' setup.sh && \
     \
     dpkg --add-architecture i386 && \
     apt-get update && \
@@ -93,8 +92,14 @@ RUN pip3 install virtualenv && \
         libtool \
         libc6-dev-i386 && \
     \
-    # run setup AFTER patch
+    # clone repos + create venv ONLY
     ./setup.sh -e angr && \
+    \
+    # pin safe python tooling
+    /root/.virtualenvs/angr/bin/pip install \
+        "pip==23.3.2" \
+        "setuptools==67.8.0" \
+        "wheel<0.41" && \
     \
     # checkout pinned commits
     cd /root/angr-dev/archinfo && git checkout 4eea2b81e78a2d902d6c7c0ff7168b304b9d3b8c && \
@@ -104,7 +109,7 @@ RUN pip3 install virtualenv && \
     cd /root/angr-dev/ailment && git checkout cb3205ffcb182632840d9b745a8f42b5d259a4b6 && \
     cd /root/angr-dev/angr && git checkout 6ef773615ff70c5c334ee16945e22e9005a8c82d && \
     \
-    # reinstall editable packages with safe tooling
+    # reinstall editable packages deterministically
     /root/.virtualenvs/angr/bin/pip install --no-build-isolation -e /root/angr-dev/archinfo && \
     /root/.virtualenvs/angr/bin/pip install --no-build-isolation -e /root/angr-dev/pyvex && \
     /root/.virtualenvs/angr/bin/pip install --no-build-isolation -e /root/angr-dev/cle && \
