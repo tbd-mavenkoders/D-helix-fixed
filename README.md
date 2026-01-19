@@ -168,11 +168,11 @@ apt-get install -y \
     libtool \
     libc6-dev-i386
 
+./setup.sh -e angr
 
 source /root/.virtualenvs/angr/bin/activate
 pip install "setuptools==67.8.0" "pip==23.3.2"
 
-./setup.sh -e angr
 
 cd /root/angr-dev
 

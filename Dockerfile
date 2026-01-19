@@ -68,22 +68,45 @@ RUN pip3 install virtualenv && \
     git clone https://github.com/angr/angr-dev.git && \
     cd angr-dev && \
     git checkout b2198226e6194310c57a4b50ae9a6c82b1b6cd7f && \
+    \
     dpkg --add-architecture i386 && \
     apt-get update && \
-    apt-get install -y openjdk-8-jdk zlib1g:i386 libtinfo5:i386 libstdc++6:i386 \
-    libgcc1:i386 libc6:i386 nasm binutils-multiarch qtdeclarative5-dev \
-    libpixman-1-dev libglib2.0-dev debian-archive-keyring debootstrap libtool \
-    libc6-dev-i386 && \
-    /root/.virtualenvs/angr/bin/pip install "setuptools==67.8.0" "pip==23.3.2" && \
+    apt-get install -y \
+        openjdk-8-jdk \
+        zlib1g:i386 \
+        libtinfo5:i386 \
+        libstdc++6:i386 \
+        libgcc1:i386 \
+        libc6:i386 \
+        nasm \
+        binutils-multiarch \
+        qtdeclarative5-dev \
+        libpixman-1-dev \
+        libglib2.0-dev \
+        debian-archive-keyring \
+        debootstrap \
+        libtool \
+        libc6-dev-i386 && \
+    \
+    # force old tooling BEFORE setup installs anything
+    export ANGR_NO_PIP_UPGRADE=1 && \
     ./setup.sh -e angr && \
-    # Checkout specific commits
+    \
+    # now downgrade inside the created venv
+    /root/.virtualenvs/angr/bin/pip install \
+        "pip==23.3.2" \
+        "setuptools==67.8.0" \
+        "wheel<0.41" && \
+    \
+    # checkout pinned commits
     cd /root/angr-dev/archinfo && git checkout 4eea2b81e78a2d902d6c7c0ff7168b304b9d3b8c && \
     cd /root/angr-dev/pyvex && git checkout de7f92e126fbbaa61287e2a647be6f2871d56032 && \
     cd /root/angr-dev/cle && git checkout 7024cd3fc479af221cc3070b0ddca1ac20ca1a22 && \
     cd /root/angr-dev/claripy && git checkout 91518043156fc317195a577a6c8b41763c138577 && \
     cd /root/angr-dev/ailment && git checkout cb3205ffcb182632840d9b745a8f42b5d259a4b6 && \
     cd /root/angr-dev/angr && git checkout 6ef773615ff70c5c334ee16945e22e9005a8c82d && \
-    # Install components
+    \
+    # reinstall editable repos cleanly
     /root/.virtualenvs/angr/bin/pip install --no-build-isolation -e /root/angr-dev/archinfo && \
     /root/.virtualenvs/angr/bin/pip install --no-build-isolation -e /root/angr-dev/pyvex && \
     /root/.virtualenvs/angr/bin/pip install --no-build-isolation -e /root/angr-dev/cle && \
