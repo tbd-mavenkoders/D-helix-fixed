@@ -237,7 +237,7 @@ int main() {\n\
 # STEP 12: Install FastAPI Server Dependencies
 # ============================================================================
 RUN cd /root/work/D-helix-fixed/fastapi_server && \
-    /root/.virtualenvs/angr/bin/pip install -r requirements_api.txt && 
+    /root/.virtualenvs/angr/bin/pip install -r requirements_api.txt && \
     /root/.virtualenvs/angr/bin/pip install cxxfilt>=0.3.0
 
 # Expose FastAPI port
