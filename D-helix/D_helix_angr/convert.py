@@ -258,131 +258,219 @@ def add_block_info(finput,islifter) :
     fout.close()
 
 
-#something wrong here, need to change........
-def read_BB_info(linelist,i) :
+def read_BB_info(linelist, i):
+    """Extract basic block information from KLEE output.
+    
+    Args:
+        linelist: List of lines from the KLEE output file
+        i: Current line index
+        
+    Returns:
+        list: A list with exactly 3 string elements [block_name, true_target, false_target]
+              or None if the information cannot be extracted.
+    """
     result = []
+    
+    # Bounds checking
+    if i + 1 >= len(linelist) or i - 2 < 0:
+        print(f"read_BB_info: index out of bounds at line {i}")
+        return None
+        
     add_ret = 'Inside Ret state.pc ++' in linelist[i+1]
     add_ite = 'Add constraint for trueStatement' in linelist[i+1]
-    if 'block_' in linelist[i-2] :
+    
+    if 'block_' in linelist[i-2]:
         line = linelist[i-2]
-        block_name =line[0:-1]
-        result.append(block_name) #remove "\n"
+        block_name = line[0:-1]  # remove "\n"
+        
+        if not block_name or not isinstance(block_name, str):
+            print(f"read_BB_info: invalid block_name at line {i-2}")
+            return None
+            
+        result.append(block_name)
+        
         if add_ite:
-            j = i+1
+            j = i + 1
             while j < len(linelist):
                 if 'Father_Block:' in linelist[j] and block_name in linelist[j]:
                     line = linelist[j-1]
-                    #print(j)
-                    #print( linelist[j])
                     result.append(line[0:-1])
-                    k = j+1
+                    k = j + 1
                     while k < len(linelist):
-                        if 'Father_Block:' in linelist[k]  and block_name in linelist[k] :
+                        if 'Father_Block:' in linelist[k] and block_name in linelist[k]:
                             line = linelist[k-1]
                             result.append(line[0:-1])
                             break
-                        else :
+                        else:
                             k += 1
                     break
-                else :
+                else:
                     j += 1
         
-        #just make sure three results are output            
+        # For return statements, duplicate the block name
         if add_ret:
             result.append(line[0:-1])
             result.append(line[0:-1])
+        
+        # Validate we have exactly 3 elements
+        if len(result) < 3:
+            print(f"read_BB_info: incomplete result at line {i}: got {len(result)} elements, expected 3")
+            return None
+            
+        # Validate all elements are non-empty strings
+        for idx, elem in enumerate(result):
+            if not elem or not isinstance(elem, str):
+                print(f"read_BB_info: invalid element at position {idx}: '{elem}'")
+                return None
+                
         return result
-    else :
-        return [[],[],[]]
+    else:
+        print(f"read_BB_info: 'block_' not found at line {i-2}")
+        return None
 
 
 '''
 we just convert our cfg file to a more "z3 like " readable code
 '''
-def cfg_to_ir(finput,finput_reorder,foutput,islifter):
-    rewrite_add_constraint(finput,finput_reorder,islifter)
-    add_block_info(finput_reorder,islifter)
-            
-    fin = open(finput_reorder,'r')
-    linelist = fin.readlines()
-    fin.close()
+def cfg_to_ir(finput, finput_reorder, foutput, islifter):
+    """Convert CFG file to Z3-like intermediate representation.
+    
+    Returns:
+        bool: True if conversion succeeded, False if KLEE output was malformed.
+    """
+    rewrite_add_constraint(finput, finput_reorder, islifter)
+    add_block_info(finput_reorder, islifter)
+    
+    try:
+        fin = open(finput_reorder, 'r')
+        linelist = fin.readlines()
+        fin.close()
+    except (IOError, OSError) as e:
+        print(f"cfg_to_ir: cannot read file {finput_reorder}: {e}")
+        return False
+        
+    if not linelist:
+        print(f"cfg_to_ir: empty input file {finput_reorder}")
+        return False
 
-    fout = open(foutput,'w')
+    bb_info_errors = 0
+    blocks_processed = 0
+    
+    try:
+        fout = open(foutput, 'w')
+    except (IOError, OSError) as e:
+        print(f"cfg_to_ir: cannot write file {foutput}: {e}")
+        return False
+    
     i = 0
-    while i < len(linelist) -1 :
+    while i < len(linelist) - 1:
         func_start = 'Function start' in linelist[i]
         add_ite = 'Add constraint for trueStatement' in linelist[i+1]
         if add_ite and func_start:
-            #1. read above two lines it should be:
-               #BB:[_a->_b] 
-               #BB:[_a->_c] appears            
-            BB_info = read_BB_info(linelist,i)
-            if (not BB_info) :
-                sys.exit ("Error in cfg to ir for BB info reading")
-            #print(BB_info)
-            #2. output let block_a =
+            # 1. read above two lines it should be:
+            #    BB:[_a->_b] 
+            #    BB:[_a->_c] appears            
+            BB_info = read_BB_info(linelist, i)
+            if BB_info is None:
+                # Log but don't crash - skip this block
+                bb_info_errors += 1
+                print(f"cfg_to_ir: skipping malformed block at line {i}")
+                i += 1
+                continue
+                
+            blocks_processed += 1
+            # 2. output let block_a =
             fout.write("###start\n") 
-            fout.write("(let (("+str(BB_info[0])+"\n")            
+            fout.write("(let ((" + str(BB_info[0]) + "\n")            
             
-            #3. output let constraint_a = things between ---dump z3 start--- and ---dump z3 end---
-            fout.write("(let ((constraint_"+str(BB_info[0])+"\n")
+            # 3. output let constraint_a = things between ---dump z3 start--- and ---dump z3 end---
+            fout.write("(let ((constraint_" + str(BB_info[0]) + "\n")
             dump_start = i
             dump_end = i
-            for k in range(i,len(linelist)):    
+            for k in range(i, len(linelist)):    
                 if '----dump z3 start----' in linelist[k]:
                     dump_start = k
                 if '----dump z3 end----' in linelist[k]:
                     dump_end = k
                     break
-            for k in range(dump_start+2,dump_end) :
+            for k in range(dump_start+2, dump_end):
                 fout.write(linelist[k])
             fout.write("))")
-            #2. output ite constraint block_c block_b
-            fout.write("(ite constraint_"+str(BB_info[0]) + " "+str(BB_info[1])+ " "+str(BB_info[2]) +" )\n")
+            # 2. output ite constraint block_c block_b
+            fout.write("(ite constraint_" + str(BB_info[0]) + " " + str(BB_info[1]) + " " + str(BB_info[2]) + " )\n")
             fout.write(")))\n")                
             fout.write("###end\n")
         
         add_ret = 'Inside Ret state.pc ++' in linelist[i+1]
         if add_ret and func_start:
             fout.write("###start\n") 
-            #1. read to above until first line of BB:[_a->_b]
-            BB_info = read_BB_info(linelist,i)
-            if (not BB_info) :
-                sys.exit ("Error in cfg to ir for BB info reading")
-            #print(BB_info)
-            #2. output let block_a =
-            fout.write("(let (("+str(BB_info[0])+"\n")
-            #3. output things between ---dump z3 start--- and ---dump z3 end---
+            # 1. read to above until first line of BB:[_a->_b]
+            BB_info = read_BB_info(linelist, i)
+            if BB_info is None:
+                # Log but don't crash - skip this block
+                bb_info_errors += 1
+                print(f"cfg_to_ir: skipping malformed return block at line {i}")
+                i += 1
+                continue
+                
+            blocks_processed += 1
+            # 2. output let block_a =
+            fout.write("(let ((" + str(BB_info[0]) + "\n")
+            # 3. output things between ---dump z3 start--- and ---dump z3 end---
             dump_start = i
             dump_end = i
-            for k in range(i,len(linelist)):    
+            for k in range(i, len(linelist)):    
                 if '----dump z3 start----' in linelist[k]:
                     dump_start = k
                 if '----dump z3 end----' in linelist[k]:
                     dump_end = k
                     break
-            #just dump pure expression
-            for k in range(dump_start+2,dump_end) :
+            # just dump pure expression
+            for k in range(dump_start+2, dump_end):
                 fout.write(linelist[k])
             fout.write("))\n")
             fout.write("###end\n")
         
         i += 1
     fout.close()
+    
+    if bb_info_errors > 0:
+        print(f"cfg_to_ir: completed with {bb_info_errors} malformed blocks skipped, {blocks_processed} blocks processed")
+    
+    # Return False only if we got no blocks at all (complete failure)
+    if blocks_processed == 0 and bb_info_errors > 0:
+        print(f"cfg_to_ir: KLEE output appears to be completely malformed")
+        return False
+        
+    return True
 '''
 Think about this, since we use bfs-klee to symbolic execute the bitcode, the info being dumped is from root to each leaves.
 However, when we run the z3, we need to define those leaf nodes first. Hence, we need to revert the order of whole ir file.
 '''
 def ir_reorder(finput):
+    """Reorder IR blocks from BFS order (root-to-leaf) to Z3 order (leaf-to-root).
+    
+    Returns:
+        bool: True if reordering succeeded, False if file is empty or unreadable.
+    """
     block_list = []
-    fin = open(finput,'r')
-    linelist = fin.readlines()
-    fin.close()
+    try:
+        fin = open(finput, 'r')
+        linelist = fin.readlines()
+        fin.close()
+    except (IOError, OSError) as e:
+        print(f"ir_reorder: cannot read file {finput}: {e}")
+        return False
+        
+    if not linelist:
+        print(f"ir_reorder: empty input file {finput}")
+        return False
+        
     i = 0
-    while i < len(linelist) :
+    while i < len(linelist):
         if '###start' in linelist[i]:
             j = i
-            while j < len(linelist) :
+            while j < len(linelist):
                 if '###end' in linelist[j]:
                     result = []
                     result.append(i)
@@ -394,14 +482,24 @@ def ir_reorder(finput):
                     j += 1
         else:
             i += 1
-    #print (block_list)
-    fout = open(finput,'w')
-    k = len(block_list) -1 
-    while k >= 0 :
-        for i in range(block_list[k][0],block_list[k][1]+1):
-            fout.write(linelist[i])
-        k -= 1
-    fout.close()
+            
+    if not block_list:
+        print(f"ir_reorder: no blocks found in {finput}")
+        return False
+        
+    try:
+        fout = open(finput, 'w')
+        k = len(block_list) - 1 
+        while k >= 0:
+            for i in range(block_list[k][0], block_list[k][1]+1):
+                fout.write(linelist[i])
+            k -= 1
+        fout.close()
+    except (IOError, OSError) as e:
+        print(f"ir_reorder: cannot write file {finput}: {e}")
+        return False
+        
+    return True
 
 def ir_to_z3_for_file(linelist,fout,root_name):
     block_list = []
@@ -435,52 +533,91 @@ def ir_to_z3_for_file(linelist,fout,root_name):
 
 
 def find_root(linelist):
-    k = len(linelist) -1
-    while k >= 0 :
-        if '###start' in linelist[k] :
-            if 'block_' in linelist[k+1] :
-                root_name = str(re.search('\(let \(\((.+?)\n',linelist[k+1]).group(1))
-                #print(root_name)
-                return root_name    
-        else:
-            k -= 1
+    """Find the root block name in the IR file.
+    
+    Returns:
+        str: The root block name, or None if not found.
+    """
+    k = len(linelist) - 1
+    while k >= 0:
+        if '###start' in linelist[k]:
+            if k + 1 < len(linelist) and 'block_' in linelist[k+1]:
+                match = re.search(r'\(let \(\((.+?)\n', linelist[k+1])
+                if match:
+                    root_name = str(match.group(1))
+                    return root_name
+                else:
+                    print(f"find_root: regex failed to match at line {k+1}")
+                    return None
+        k -= 1
+    print("find_root: no root block found in IR file")
+    return None
         
 
 
 
-def ir_to_z3(finput_lifter_original,finput_lifter,finput_decompiler,foutput):
+def ir_to_z3(finput_lifter_original, finput_lifter, finput_decompiler, foutput):
+    """Convert IR files to Z3 formula for equivalence checking.
+    
+    Returns:
+        tuple: (success: bool, unsat: bool)
+        - success: True if conversion completed, False if input files were malformed
+        - unsat: True if the formula should be checked for unsat (multi-arg case)
+    """
     num_bits = "2048" 
     num_byte = 256 
-    #print(foutput)
+    
+    # Read lifter original file
+    try:
+        fin = open(finput_lifter_original, 'r')
+        linelist = fin.readlines()
+        fin.close()
+    except (IOError, OSError) as e:
+        print(f"ir_to_z3: cannot read {finput_lifter_original}: {e}")
+        return (False, False)
+    
+    if not linelist:
+        print(f"ir_to_z3: empty angr IR file {finput_lifter_original}")
+        return (False, False)
+
     declare_list_angr = []
     declare_list_angr_variable = []
-    declare_list_angr_variable_isarray={}
+    declare_list_angr_variable_isarray = {}
     declare_list_prompt = []
     declare_list_prompt_variable = []
-    fin = open(finput_lifter_original, 'r')
-    linelist = fin.readlines()
-    fin.close()
 
     unsat = False
     #declare variables in lifter
     i = 0
     while i < len(linelist) :
         if '(declare-fun' in linelist[i]:
-            variable_name = re.search('\(declare-fun (.+?) \(\) (.+?)\n',linelist[i]).group(1)
-            variable_type = re.search('\(declare-fun (.+?) \(\) (.+?)\n',linelist[i]).group(2)
-            declare_list_angr.append("(declare-const "+ variable_name +" "+variable_type+"\n")
-            if "2048" in variable_type:
-                declare_list_angr_variable_isarray[variable_name] = True
-            else:
-                declare_list_angr_variable_isarray[variable_name] = False
-            if 'angr_' in linelist[i]:
-                declare_list_angr_variable.append(variable_name)
+            match = re.search(r'\(declare-fun (.+?) \(\) (.+?)\n', linelist[i])
+            if match:
+                variable_name = match.group(1)
+                variable_type = match.group(2)
+                declare_list_angr.append("(declare-const "+ variable_name +" "+variable_type+"\n")
+                if "2048" in variable_type:
+                    declare_list_angr_variable_isarray[variable_name] = True
+                else:
+                    declare_list_angr_variable_isarray[variable_name] = False
+                if 'angr_' in linelist[i]:
+                    declare_list_angr_variable.append(variable_name)
         i += 1
     #prompt_arg_name = re.search('Function:  (.+?)\n',linelist[1]).group(1)
     prompt_arg_name = "prompt_args"
-    fin = open(finput_decompiler,'r')
-    linelist = fin.readlines()
-    fin.close()
+    
+    # Read decompiler file
+    try:
+        fin = open(finput_decompiler, 'r')
+        linelist = fin.readlines()
+        fin.close()
+    except (IOError, OSError) as e:
+        print(f"ir_to_z3: cannot read {finput_decompiler}: {e}")
+        return (False, False)
+        
+    if not linelist:
+        print(f"ir_to_z3: empty decompiler IR file {finput_decompiler} - KLEE may have failed")
+        return (False, False)
     #print(prompt_arg_name)
     #declare variables in decompiler
     i = 0
@@ -571,17 +708,53 @@ def ir_to_z3(finput_lifter_original,finput_lifter,finput_decompiler,foutput):
     
     fout.write("(assert \n")
     fout.write("\n(let\n(\n(angr\n")
-    fin = open(finput_lifter,'r')
-    linelist = fin.readlines()
-    fin.close()
+    
+    # Read and process lifter IR
+    try:
+        fin = open(finput_lifter, 'r')
+        linelist = fin.readlines()
+        fin.close()
+    except (IOError, OSError) as e:
+        print(f"ir_to_z3: cannot read lifter IR file {finput_lifter}: {e}")
+        fout.close()
+        return (False, False)
+        
+    if not linelist:
+        print(f"ir_to_z3: empty lifter IR file {finput_lifter}")
+        fout.close()
+        return (False, False)
+        
     root_name = find_root(linelist)
-    ir_to_z3_for_file(linelist, fout,root_name)
+    if root_name is None:
+        print(f"ir_to_z3: could not find root block in lifter IR - ANGR analysis may have failed")
+        fout.close()
+        return (False, False)
+        
+    ir_to_z3_for_file(linelist, fout, root_name)
     fout.write("    (prompt \n")
-    fin = open(finput_decompiler,'r')
-    linelist = fin.readlines()
-    fin.close()
+    
+    # Read and process decompiler IR
+    try:
+        fin = open(finput_decompiler, 'r')
+        linelist = fin.readlines()
+        fin.close()
+    except (IOError, OSError) as e:
+        print(f"ir_to_z3: cannot read decompiler IR file {finput_decompiler}: {e}")
+        fout.close()
+        return (False, False)
+        
+    if not linelist:
+        print(f"ir_to_z3: empty decompiler IR file {finput_decompiler} - KLEE symbolic execution may have failed")
+        fout.close()
+        return (False, False)
+        
     root_name = find_root(linelist)
-    ir_to_z3_for_file(linelist, fout,root_name)
+    if root_name is None:
+        print(f"ir_to_z3: could not find root block in decompiler IR - KLEE output may be malformed")
+        fout.close()
+        return (False, False)
+        
+    ir_to_z3_for_file(linelist, fout, root_name)
     
     if unsat == True:
         fout.write(")\n ( not (= angr prompt))\n))")
@@ -603,7 +776,7 @@ def ir_to_z3(finput_lifter_original,finput_lifter,finput_decompiler,foutput):
             fout.write(linelist[i])
             i += 1    
         fout.close()
-    return unsat
+    return (True, unsat)
 
 def main():
     cfg_to_ir(file_name_lifter,file_reorder_lifter,file_ir_lifter,True)

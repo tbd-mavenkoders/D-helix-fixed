@@ -876,15 +876,29 @@ def cfg_to_ir(finput,foutput):
 #However, when we run the z3, we need to define those leaf nodes first. Hence, we need to revert the order of whole ir file.
 
 def ir_reorder(finput):
+    """Reorder IR blocks from BFS order (root-to-leaf) to Z3 order (leaf-to-root).
+    
+    Returns:
+        bool: True if reordering succeeded, False if file is empty or unreadable.
+    """
     block_list = []
-    fin = open(finput,'r')
-    linelist = fin.readlines()
-    fin.close()
+    try:
+        fin = open(finput, 'r')
+        linelist = fin.readlines()
+        fin.close()
+    except (IOError, OSError) as e:
+        print(f"ir_reorder (angr): cannot read file {finput}: {e}")
+        return False
+        
+    if not linelist:
+        print(f"ir_reorder (angr): empty input file {finput}")
+        return False
+        
     i = 0
-    while i < len(linelist) :
+    while i < len(linelist):
         if '###start' in linelist[i]:
             j = i
-            while j < len(linelist) :
+            while j < len(linelist):
                 if '###end' in linelist[j]:
                     result = []
                     result.append(i)
@@ -896,14 +910,24 @@ def ir_reorder(finput):
                     j += 1
         else:
             i += 1
-    #print (block_list)
-    fout = open(finput,'w')
-    k = len(block_list) -1 
-    while k >= 0 :
-        for i in range(block_list[k][0],block_list[k][1]+1):
-            fout.write(linelist[i])
-        k -= 1
-    fout.close()
+            
+    if not block_list:
+        print(f"ir_reorder (angr): no blocks found in {finput}")
+        return False
+        
+    try:
+        fout = open(finput, 'w')
+        k = len(block_list) - 1 
+        while k >= 0:
+            for i in range(block_list[k][0], block_list[k][1]+1):
+                fout.write(linelist[i])
+            k -= 1
+        fout.close()
+    except (IOError, OSError) as e:
+        print(f"ir_reorder (angr): cannot write file {finput}: {e}")
+        return False
+        
+    return True
 
 
 def main():

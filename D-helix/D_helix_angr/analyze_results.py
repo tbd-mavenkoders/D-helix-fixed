@@ -10,6 +10,13 @@ import signal
 import subprocess
 import platform
 
+# Import cxxfilt for C++ name demangling
+try:
+    import cxxfilt
+    HAS_CXXFILT = True
+except ImportError:
+    HAS_CXXFILT = False
+
 directname_originalc = "./test_muqi/originalc"
 directname_lifterbc = "./test_muqi/lifterbc"
 directname_generatedc = "./test_muqi/generatedc"
@@ -20,6 +27,27 @@ directname_diff = "./test_muqi/diff"
 directname_z3 = "./test_muqi/z3"
 directname_log = "./test_muqi/log"
 
+
+def demangle_cpp_name(name):
+    """Demangle a C++ mangled name to get the base function name."""
+    if not HAS_CXXFILT:
+        return name
+    try:
+        demangled = cxxfilt.demangle(name)
+        # Extract just the function name without parameters
+        # e.g., "global_add(int, int)" -> "global_add"
+        # e.g., "Calculator::add(int, int)" -> "Calculator_add" (sanitized)
+        if '(' in demangled:
+            demangled = demangled.split('(')[0]
+        # Replace :: with _ for class methods
+        demangled = demangled.replace('::', '_')
+        return demangled
+    except:
+        return name
+
+def is_cpp_mangled_name(name):
+    """Check if a name appears to be a C++ mangled name."""
+    return name.startswith('_Z') or name.startswith('__Z')
 
 def pkiller():
     from ctypes import cdll
@@ -43,10 +71,26 @@ def run_cmd(cmd_string, timeout):
         pass
             
 def filter_instruction_in_function(filepath,filepath_out,function_name,exclude_function_name):
-    fin = open(filepath,'r')
-    linelist = fin.readlines()
-    fin.close()
+    """Filter KLEE output to extract only the target function's symbolic execution results.
+    
+    Returns:
+        bool: True if filtering succeeded, False if function not found or error occurred.
+    """
+    try:
+        fin = open(filepath,'r')
+        linelist = fin.readlines()
+        fin.close()
+    except (IOError, OSError) as e:
+        print(f'filter_instruction_in_function: cannot read file {filepath}: {e}')
+        return False
+    
+    if not linelist:
+        print(f'filter_instruction_in_function: empty file {filepath}')
+        return False
+        
     contain_symbol = np.zeros((len(linelist)),dtype=bool)
+    function_found = False
+    
     for k in range(len(function_name)):
         for i in range(len(linelist)):
             exclude_line = False
@@ -55,6 +99,7 @@ def filter_instruction_in_function(filepath,filepath_out,function_name,exclude_f
                         exclude_line = True
 
             if 'Function start: ' in linelist[i] and function_name[k].replace(".","_") in linelist[i] and not exclude_line:
+                function_found = True
                 contain_symbol[i] = True
                 index_dump_start = i
                 index_dump_end = -1
@@ -75,19 +120,30 @@ def filter_instruction_in_function(filepath,filepath_out,function_name,exclude_f
                                 break
 
                 if index_dump_start == -1 or index_dump_end == -1:
-                    print( 'something wrong inside filter_instruction_in_function')
-                    fout.close()
-                    return
+                    print(f'filter_instruction_in_function: malformed KLEE output - could not find function bounds for {function_name[k]}')
+                    # Don't crash - continue to try other functions or write empty output
+                    continue
                 
                 #print (len(linelist))
                 #print('['+str(index_dump_start-1) + ',' + str(index_dump_end+1) +']')
                 for j in range(index_dump_start-1,index_dump_end+1): 
                     contain_symbol[j] = True
-    fout = open(filepath_out,'w')
-    for i in range(len(linelist)):
-        if contain_symbol[i] == True:
-            fout.write(linelist[i])
-    fout.close()            
+    
+    if not function_found:
+        print(f'filter_instruction_in_function: function {function_name} not found in KLEE output')
+        # Still write an empty file so downstream doesn't crash on missing file
+        
+    try:
+        fout = open(filepath_out,'w')
+        for i in range(len(linelist)):
+            if contain_symbol[i] == True:
+                fout.write(linelist[i])
+        fout.close()
+    except (IOError, OSError) as e:
+        print(f'filter_instruction_in_function: cannot write file {filepath_out}: {e}')
+        return False
+        
+    return function_found            
     
 
 def output_z3_test(f1path,f2path):
@@ -313,15 +369,22 @@ def analyze_results(i,filename,function_name):
     file_ir_decompiler = klee_decompile_path +"_ir_decompiler.txt"
     file_ir_lifter = angr_log_filepath_no_suffix+"_ir_third_flip.txt"
 
+    # For C++ mangled names, use the demangled name when searching KLEE output
+    # because KLEE uses the unmangled name from extern "C" blocks
+    search_function_name = function_name
+    if is_cpp_mangled_name(function_name):
+        search_function_name = demangle_cpp_name(function_name)
+        print(f"C++ function detected: {function_name} -> searching for {search_function_name}")
+
     #filter the symbol generated from uclibc durin symbolic comparison
     #function_list = [function_name,"__klee_posix_wrapped_main"]
-    function_list = [function_name]
+    function_list = [search_function_name]
     exclude_function_list = ["__user_main","__uClibc_main"]
     print("start analyzing results")
     filter_instruction_in_function(klee_decompile_path +"_test.txt",klee_decompile_path + "_symbolic_executation.txt",function_list,exclude_function_list)
     print("finished decompile analysis")
     #use lifter here since we do not need block comparison now
-    output_cfg_lifter(function_name,klee_decompile_path +"_symbolic_executation.txt",klee_decompile_path +"_cfg.txt")
+    output_cfg_lifter(search_function_name,klee_decompile_path +"_symbolic_executation.txt",klee_decompile_path +"_cfg.txt")
     print("finished cfg decompile")
     print("start converting cfg to ir")
 

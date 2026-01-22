@@ -1,636 +1,277 @@
-Here is the properly formatted guide for setting up the D-Helix environment on Ubuntu 20.04. The commands have been preserved exactly as provided in the source file, structured into clear steps for readability.
+# D-Helix: Binary Verification System
 
-# D-Helix Environment Setup Guide
+D-Helix is a formal verification tool that checks whether decompiled source code is semantically equivalent to an original binary. It uses symbolic execution and SMT solving to prove equivalence or find counterexamples (bugs).
 
-**OS:** Ubuntu 20.04 Container
-
----
-
-### 1. Initial Setup and Repository Cloning
-
-Create the working directory and clone the repository.
-
-```bash
-mkdir -p /root/work
-cd /root/work && git clone https://github.com/tbd-mavenkoders/D-helix-fixed.git
-cd /root
+## Architecture
 
 ```
-
-### 2. Dependencies and Python Setup
-
-#### 2a. Install Base System Packages
-
-```bash
-apt-get update && apt-get install -y \
-    build-essential \
-    git \
-    wget \
-    curl \
-    software-properties-common \
-    cmake \
-    ninja-build \
-    pkg-config \
-    python3-pip \
-    python3-dev \
-    python3-venv \
-    libffi-dev \
-    libssl-dev \
-    libtcmalloc-minimal4 \
-    libgoogle-perftools-dev \
-    libncurses5-dev \
-    libsqlite3-dev \
-    libcap-dev \
-    zlib1g-dev \
-    libbz2-dev \
-    libreadline-dev \
-    libxml2-dev \
-    libxslt1-dev \
-    default-jdk \
-    unzip \
-    vim \
-    nano \
-    sudo
-
+┌─────────────────┐     ┌─────────────────┐
+│  Original       │     │  Decompiled     │
+│  Binary         │     │  Source Code    │
+└────────┬────────┘     └────────┬────────┘
+         │                       │
+         ▼                       ▼
+┌─────────────────┐     ┌─────────────────┐
+│  ANGR           │     │  Clang-16       │
+│  (VEX IR)       │     │  (LLVM BC)      │
+└────────┬────────┘     └────────┬────────┘
+         │                       │
+         │                       ▼
+         │              ┌─────────────────┐
+         │              │  KLEE/PROMPT    │
+         │              │  (Symbolic Exec)│
+         │              └────────┬────────┘
+         │                       │
+         ▼                       ▼
+┌─────────────────┐     ┌─────────────────┐
+│  IR Formula     │     │  IR Formula     │
+│  (Binary)       │     │  (Decompiled)   │
+└────────┬────────┘     └────────┬────────┘
+         │                       │
+         └───────────┬───────────┘
+                     ▼
+            ┌─────────────────┐
+            │  Z3 SMT Solver  │
+            │  Equivalence?   │
+            └────────┬────────┘
+                     │
+         ┌───────────┴───────────┐
+         ▼                       ▼
+    ┌─────────┐            ┌─────────┐
+    │  UNSAT  │            │   SAT   │
+    │ (Equal) │            │  (Bug!) │
+    └─────────┘            └─────────┘
 ```
 
-#### 2b. Install Python 3.8 and Configure Alternatives
+## Quick Start (Docker)
 
-This step installs Python 3.8 via the deadsnakes PPA and configures it as the default python version.
-
-```bash
-apt-get update && \
-apt-get install -y software-properties-common && \
-add-apt-repository ppa:deadsnakes/ppa -y && \
-apt-get update && \
-apt-get install -y python3.8 python3.8-dev python3.8-venv python3-pip \
-git build-essential cmake wget unzip libncurses5 libz-dev libtinfo5 \
-pixz xz-utils curl vim && \
-update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1 && \
-update-alternatives --install /usr/bin/python python /usr/bin/python3.8 1 && \
-ln -sf /usr/bin/python3.8 /usr/bin/python && \
-python -m pip install --upgrade pip
-
-```
-
-### 3. Install GCC 11
+### Build and Run
 
 ```bash
-cd /root
-add-apt-repository -y ppa:ubuntu-toolchain-r/test
-apt-get update
-apt-get install -y gcc-11 g++-11
-update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 110
-update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 110
-gcc --version
+# Build the Docker image
+docker build -t d-helix .
 
+# Run the API server
+docker run -p 10012:10012 d-helix
+
+# Server available at http://localhost:10012
+# API docs at http://localhost:10012/docs
 ```
 
-### 4. Install Clang 16
+### Using Docker Compose
 
 ```bash
-cd /root
-wget https://apt.llvm.org/llvm.sh
-chmod +x llvm.sh
-./llvm.sh 16
-update-alternatives --install /usr/bin/clang clang /usr/bin/clang-16 160
-update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-16 160
-clang --version
-
+docker-compose up -d
 ```
 
-### 5. Install LLVM 3.8 and Z3
+## API Usage
 
-#### Install LLVM 3.8
+### Verify a Function
 
 ```bash
-cd /root
-wget https://releases.llvm.org/3.8.0/clang+llvm-3.8.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz
-tar -xf clang+llvm-3.8.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz
-mv clang+llvm-3.8.0-x86_64-linux-gnu-ubuntu-14.04 llvm-3.8
-export PATH="/root/llvm-3.8/bin:$PATH"
-echo 'export PATH="/root/llvm-3.8/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-
+curl -X POST http://localhost:10012/verify \
+  -F "binary=@/path/to/binary" \
+  -F "decompiled_code=@/path/to/decompiled.c" \
+  -F "function_name=add" \
+  -F "is_cpp=false"
 ```
 
-#### Install Z3 Solver
-
-```bash
-cd /root
-wget https://github.com/Z3Prover/z3/releases/download/z3-4.9.1/z3-4.9.1-x64-glibc-2.31.zip
-unzip z3-4.9.1-x64-glibc-2.31.zip
-mv z3-4.9.1-x64-glibc-2.31 z3
-
-# Add to PATH and set library path
-echo 'export PATH="/root/z3/bin:$PATH"' >> ~/.bashrc
-echo 'export LD_LIBRARY_PATH="/root/z3/bin:$LD_LIBRARY_PATH"' >> ~/.bashrc
-echo 'export PYTHONPATH="/root/z3/bin/python:$PYTHONPATH"' >> ~/.bashrc
-source ~/.bashrc
-
-# Verify
-z3 --version
-
-```
-
-### 6. Install and Patch Angr
-
-#### 6a. Setup Angr Development Environment
-
-Clone `angr-dev`, checkout specific commits, and install dependencies.
-
-```bash
-pip3 install virtualenv
-
-# Clone angr-dev
-git clone https://github.com/angr/angr-dev.git
-cd angr-dev
-
-# Checkout the specific commit for Vex IR
-git checkout b2198226e6194310c57a4b50ae9a6c82b1b6cd7f
-
-dpkg --add-architecture i386
-apt-get update
-apt-get install -y \
-    openjdk-8-jdk \
-    zlib1g:i386 \
-    libtinfo5:i386 \
-    libstdc++6:i386 \
-    libgcc1:i386 \
-    libc6:i386 \
-    nasm \
-    binutils-multiarch \
-    qtdeclarative5-dev \
-    libpixman-1-dev \
-    libglib2.0-dev \
-    debian-archive-keyring \
-    debootstrap \
-    libtool \
-    libc6-dev-i386
-
-./setup.sh -e angr
-
-source /root/.virtualenvs/angr/bin/activate
-pip install "setuptools==67.8.0" "pip==23.3.2"
-
-
-cd /root/angr-dev
-
-# Checkout specific component versions
-cd /root/angr-dev/archinfo && git checkout 4eea2b81e78a2d902d6c7c0ff7168b304b9d3b8c
-cd /root/angr-dev/pyvex && git checkout de7f92e126fbbaa61287e2a647be6f2871d56032
-cd /root/angr-dev/cle && git checkout 7024cd3fc479af221cc3070b0ddca1ac20ca1a22
-cd /root/angr-dev/claripy && git checkout 91518043156fc317195a577a6c8b41763c138577
-cd /root/angr-dev/ailment && git checkout cb3205ffcb182632840d9b745a8f42b5d259a4b6
-cd /root/angr-dev/angr && git checkout 6ef773615ff70c5c334ee16945e22e9005a8c82d
-
-cd /root/angr-dev
-
-# Install components
-pip install --no-build-isolation -e ./archinfo
-pip install --no-build-isolation -e ./pyvex
-pip install --no-build-isolation -e ./cle
-pip install --no-build-isolation -e ./claripy
-pip install --no-build-isolation -e ./ailment
-pip install --no-build-isolation -e ./angr
-
-```
-
-#### 6b. Patching Angr
-
-Apply custom patches and rebuild Pyvex.
-
-```bash
-source /root/.virtualenvs/angr/bin/activate
-cd /root/angr-dev
-
-cd /root/angr-dev/angr
-patch -p1 < /root/work/D-helix-fixed/D-helix/angr_vexir_diff.patch
-
-cd /root/angr-dev/claripy
-patch -p1 < /root/work/D-helix-fixed/D-helix/claripy_vexir_diff.patch
-
-cp /root/work/D-helix-fixed/D-helix/muqi.py /root/angr-dev/angr/angr/
-
-ls -la /root/angr-dev/angr/angr/muqi.py
-
-pip uninstall -y capstone
-pip install capstone==4.0.2
-
-source /root/.virtualenvs/angr/bin/activate
-cd /root/angr-dev/pyvex
-
-# Clean and rebuild
-pip uninstall -y pyvex
-python setup.py build
-pip install --no-build-isolation -e .
-
-# Verify angr installation
-python -c "import pyvex; print('pyvex loaded')"
-python -c "import angr; print('angr version:', angr.__version__)"
-
-```
-
-### 7. Install KLEE-uClibc
-
-```bash
-cd /root
-git clone https://github.com/klee/klee-uclibc.git
-cd klee-uclibc
-
-apt-get install -y libncurses5-dev libncursesw5-dev
-apt-get install -y gcc-multilib g++-multilib
-
-# Copy necessary libraries
-cp /usr/lib/gcc/x86_64-linux-gnu/9/crt*.o /usr/lib/
-# Copy the missing libgcc libraries as well (to prevent the next error)
-cp /usr/lib/gcc/x86_64-linux-gnu/9/libgcc* /usr/lib/
-
-# Go back to the build folder
-cd /root/klee-uclibc
-
-# Configure 
-./configure --make-llvm-lib \
-  --with-llvm-config /root/llvm-3.8/bin/llvm-config \
-  --with-cc /root/llvm-3.8/bin/clang
-
-# Build
-make -j$(nproc)
-
-```
-
-### 8. PROMPT Setup
-
-Install dependencies, patch PROMPT, and apply fixes to LLVM headers and Z3Builder.
-
-```bash
-apt-get install -y libgoogle-perftools-dev
-apt-get install -y flex bison
-python -m pip install lit
-
-cd /root
-
-git clone https://github.com/sysrel/PROMPT.git
-cd PROMPT
-
-patch -p1 < /root/work/D-helix-fixed/D-helix/prompt_diff.patch
-
-# Create build directory
-mkdir build && cd build
-
-cmake \
-  -DCMAKE_CXX_FLAGS="-D_GLIBCXX_USE_CXX11_ABI=0" \
-  -DENABLE_TCMALLOC=ON \
-  -DENABLE_POSIX_RUNTIME=ON \
-  -DENABLE_KLEE_UCLIBC=ON \
-  -DKLEE_UCLIBC_PATH=/root/klee-uclibc \
-  -DENABLE_SOLVER_Z3=ON \
-  -DENABLE_SOLVER_STP=OFF \
-  -DENABLE_SOLVER_METASMT=OFF \
-  -DENABLE_UNIT_TESTS=OFF \
-  -DENABLE_SYSTEM_TESTS=OFF \
-  -DLLVM_CONFIG_BINARY=/root/llvm-3.8/bin/llvm-config \
-  -DLLVMCC=/root/llvm-3.8/bin/clang \
-  -DLLVMCXX=/root/llvm-3.8/bin/clang++ \
-  ../
-
-cp /root/PROMPT/lib/Solver/Z3Builder.h /root/PROMPT/lib/Expr/
-cd /root/PROMPT/build
-
-# patch the llvm header ( valuemap error )
-sed -i 's/return MDMap;/return (bool)MDMap;/g' /root/llvm-3.8/include/llvm/IR/ValueMap.h
-
-# copy z3builder.h to the right place 
-cp /root/PROMPT/lib/Expr/Z3Builder.h /root/PROMPT/lib/Core/
-
-# inject header function
-sed -i '/Z3ASTHandle construct_muqi_solver(ref<Expr> e, int \*width_out);/a \\tZ3ASTHandle construct_muqi(ref<Expr> e, int width) { int w = width; return construct_muqi_solver(e, \&w); }' /root/PROMPT/lib/Core/Z3Builder.h
-
-# Remove the line we added previously (to avoid duplicates)
-sed -i '/construct_muqi(ref<Expr>/d' /root/PROMPT/lib/Core/Z3Builder.h
-
-# Insert the function again, but explicitly add "public:" to force visibility
-sed -i '/Z3ASTHandle construct_muqi_solver(ref<Expr> e, int \*width_out);/a public: Z3ASTHandle construct_muqi(ref<Expr> e, int width) { int w = width; return construct_muqi_solver(e, \&w); }' /root/PROMPT/lib/Core/Z3Builder.h
-
-# Remove the previous incorrect patch
-sed -i '/construct_muqi(ref<Expr>/d' /root/PROMPT/lib/Core/Z3Builder.h
-
-# Insert the CORRECTED patch (Public + Pointer argument)
-sed -i '/Z3ASTHandle construct_muqi_solver(ref<Expr> e, int \*width_out);/a public: Z3ASTHandle construct_muqi(ref<Expr> e, int *width) { return construct_muqi_solver(e, width); }' /root/PROMPT/lib/Core/Z3Builder.h
-
-```
-
-### 9. Install Ghidra
-
-```bash
-cd /root
-
-# Download Ghidra 10.0
-wget https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_10.0_build/ghidra_10.0_PUBLIC_20210621.zip
-
-# Unzip
-unzip ghidra_10.0_PUBLIC_20210621.zip
-mv ghidra_10.0_PUBLIC ghidra
-
-# Add Ghidra to PATH
-echo 'export GHIDRA_HOME="/root/ghidra"' >> ~/.bashrc
-echo 'export PATH="$GHIDRA_HOME:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-
-# Verify Java is available (Ghidra needs it)
-java -version
-
-```
-
-### 10. Final Configuration and Verification
-
-```bash
-# Add PROMPT/klee to PATH
-echo 'export PATH="/root/PROMPT/build/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-
-# Verify all components
-echo "=== Checking PROMPT/KLEE ===" 
-/root/PROMPT/build/bin/klee --version 2>/dev/null || /root/PROMPT/build/bin/klee --version
-
-echo "=== Checking angr ===" 
-source /root/.virtualenvs/angr/bin/activate
-python -c "import angr; print('angr version:', angr.__version__)"
-
-echo "=== Checking Z3 ===" 
-z3 --version
-
-echo "=== Checking Ghidra ===" 
-ls /root/ghidra/ghidraRun
-
-echo "=== Checking clang-3.8 ===" 
-/root/llvm-3.8/bin/clang --version
-
-```
-
-### 11. Additional Steps
-
-Update python dependencies and fix the PATH within the virtual environment.
-
-```bash
-source /root/.virtualenvs/angr/bin/activate
-pip install wrapt-timeout-decorator six numpy
-
-source /root/.virtualenvs/angr/bin/activate
-echo $PATH
-
-# Add klee to the angr venv's activation script
-echo 'export PATH="/root/PROMPT/build/bin:$PATH"' >> /root/.virtualenvs/angr/bin/activate
-
-# Deactivate and reactivate to apply
-deactivate
-source /root/.virtualenvs/angr/bin/activate
-
-# Test klee now
-klee --version
-which klee
-
-```
-
-### 12. Simple Test Program Creation
-
-Create directory structure and a test C binary.
-
-```bash
-# Navigate to D_helix_angr
-cd /root/work/D-helix-fixed/D-helix/D_helix_angr
-
-# Create test directory structure
-mkdir -p function_name
-mkdir -p test_muqi/originalclang
-mkdir -p test_muqi/generated_whole_c
-mkdir -p test_muqi/generated_html
-mkdir -p test_muqi/generated_function_c
-mkdir -p test_muqi/generatedbc
-mkdir -p test_muqi/model_prompt
-mkdir -p test_muqi/z3
-mkdir -p test_muqi/log
-mkdir -p test_muqi/generated_function_c/project_folder
-mkdir -p test_muqi/generated_function_c/log_for_compile
-mkdir -p test_muqi/generatedll
-mkdir -p test_muqi/generatedklee
-mkdir -p test_muqi/diff
-
-# Create a simple test C program
-cat > /tmp/test_simple.c << 'EOF'
-#include <stdio.h>
-
-int add(int a, int b) {
-    return a + b;
-}
-
-int subtract(int a, int b) {
-    return a - b;
-}
-
-int main() {
-    int x = 5;
-    int y = 3;
-    printf("Add: %d\n", add(x, y));
-    printf("Sub: %d\n", subtract(x, y));
-    return 0;
-}
-EOF
-
-# Compile with clang-16 to create test binary
-clang-16 -O0 -g /tmp/test_simple.c -o test_muqi/originalclang/test_simple
-
-# Verify binary was created
-ls -lh test_muqi/originalclang/
-file test_muqi/originalclang/test_simple
-
-```
-
----
-
-## FastAPI REST API Server
-
-D-Helix now includes a FastAPI REST API server for programmatic binary verification.
-
-### Installation
-
-```bash
-# Navigate to fastapi_server directory
-cd /root/work/D-helix-fixed/fastapi_server
-
-# Activate angr virtual environment
-source /root/.virtualenvs/angr/bin/activate
-
-# Install FastAPI dependencies
-pip install -r requirements_api.txt
-
-```
-
-### Starting the Server
-
-```bash
-# Start the FastAPI server (single worker)
-python api_server.py
-
-# Server runs on http://0.0.0.0:10012
-# API documentation available at http://localhost:10012/docs
-
-```
-
-### Running Tests
-
-```bash
-# In a separate terminal, activate the environment
-source /root/.virtualenvs/angr/bin/activate
-cd /root/work/D-helix-fixed/fastapi_server
-
-# Run the test client
-python test_api_client.py
-
-```
-
-### API Endpoints
-
-- `POST /verify` - Verify binary against decompiled code
-  - **Parameters**:
-    - `binary` (file): Binary executable to verify
-    - `decompiled_code` (file): Decompiled C source code
-    - `function_name` (string): Name of function to verify
-  - **Returns**: Verification result (sat/unsat), Z3 formula, counterexample if bug found
-
-- `GET /health` - Health check endpoint
-- `GET /docs` - Interactive API documentation (Swagger UI)
-
-### Example Usage
+### Python Example
 
 ```python
 import requests
 
-# Upload files for verification
-with open('binary_file', 'rb') as binary, \
-     open('decompiled.c', 'r') as code:
-    
-    files = {
-        'binary': ('binary', binary, 'application/octet-stream'),
-        'decompiled_code': ('code.c', code.read(), 'text/plain')
+# Prepare files
+with open('binary', 'rb') as binary_file:
+    binary_data = binary_file.read()
+
+decompiled_code = """
+int add(int a, int b) {
+    return a + b;
+}
+"""
+
+# Call API
+response = requests.post(
+    'http://localhost:10012/verify',
+    files={
+        'binary': ('binary', binary_data, 'application/octet-stream'),
+        'decompiled_code': ('add.c', decompiled_code, 'text/plain')
+    },
+    data={
+        'function_name': 'add',
+        'is_cpp': 'false'
     }
-    
-    data = {'function_name': 'add'}
-    
-    response = requests.post(
-        'http://localhost:10012/verify',
-        files=files,
-        data=data
-    )
-    
-    result = response.json()
-    print(f"Result: {result['result']}")  # 'sat' or 'unsat'
-    if result['result'] == 'sat':
-        print(f"Bug found! Counterexample: {result['counterexample']}")
+)
 
+result = response.json()
+print(f"Status: {result['status']}")
+print(f"Result: {result['result']}")  # 'unsat' = equivalent, 'sat' = bug found
+
+if result['result'] == 'sat':
+    print(f"Counterexample: {result.get('counterexample')}")
 ```
 
-### Increasing Parallelism
+## API Endpoints
 
-For systems with multiple CPUs (e.g., 24 CPUs, 256GB RAM), you can increase throughput **without modifying code**:
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/verify` | POST | Verify binary against decompiled code |
+| `/health` | GET | Health check |
+| `/` | GET | API info and available endpoints |
+| `/docs` | GET | Interactive API documentation (Swagger) |
 
-#### Option 1: Multiple Uvicorn Workers
+### POST /verify Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `binary` | file | Yes | Binary executable to verify |
+| `decompiled_code` | file | Yes | Decompiled C/C++ source code |
+| `function_name` | string | Yes | Name of function to verify |
+| `is_cpp` | boolean | No | Set to `true` for C++ code (default: false) |
+
+### Response Format
+
+```json
+{
+  "request_id": "uuid",
+  "status": "success",
+  "result": "unsat",
+  "z3_formula": "...",
+  "counterexample": null,
+  "execution_time": 1.23
+}
+```
+
+- `result: "unsat"` → Binary and decompiled code are **equivalent**
+- `result: "sat"` → **Bug found!** Counterexample shows differing inputs
+
+## Supported Languages
+
+| Language | Support | Notes |
+|----------|---------|-------|
+| C | ✅ Full | All standard C functions |
+| C++ | ✅ Full | Use `extern "C"` or set `is_cpp=true` |
+
+### C++ Example
+
+```cpp
+// With extern "C" (recommended)
+extern "C" int add(int a, int b) {
+    return a + b;
+}
+
+// Without extern "C" - set is_cpp=true
+int add(int a, int b) {
+    return a + b;
+}
+```
+
+## Running Tests
 
 ```bash
-# Run with 12 workers (half of available CPUs recommended)
-uvicorn api_server:app --host 0.0.0.0 --port 10012 --workers 12
+# Inside the container or with environment set up
+cd fastapi_server
 
+# Run comprehensive test suite (29 tests)
+python test_comprehensive.py
+
+# Run specific test category
+python test_comprehensive.py --test c_add
+python test_comprehensive.py --test cpp_
+python test_comprehensive.py --test klee_
+python test_comprehensive.py --test error_
 ```
 
-#### Option 2: Gunicorn with Uvicorn Workers
+### Test Categories
+
+| Category | Tests | Description |
+|----------|-------|-------------|
+| `health_*` | 2 | Server health checks |
+| `c_*` | 12 | C function verification |
+| `cpp_*` | 3 | C++ function verification |
+| `error_*` | 3 | Error handling (invalid input) |
+| `klee_*` | 6 | KLEE edge cases and resilience |
+| `consistency_*` | 2 | Repeated request consistency |
+| `stress_*` | 1 | Sequential stress testing |
+
+## Scaling for Production
+
+### Multiple Workers
 
 ```bash
-# Install gunicorn
-pip install gunicorn
-
-# Run with 12 worker processes
-gunicorn api_server:app \
-    --workers 12 \
-    --worker-class uvicorn.workers.UvicornWorker \
-    --bind 0.0.0.0:10012 \
-    --timeout 300
-
+# Run with 12 Uvicorn workers
+docker run -d   --name dhelix   -p 10012:10012   dhelix-server   /root/.virtualenvs/angr/bin/python -m uvicorn api_server:app --host 0.0.0.0 --port 10012 --workers 12
 ```
 
-#### Option 3: Multiple Server Instances + Load Balancer
+### Resource Recommendations
 
-```bash
-# Start multiple instances on different ports
-python api_server.py &  # Port 10012
-PORT=10013 python api_server.py &
-PORT=10014 python api_server.py &
-# ... up to 24 instances
+| CPUs | RAM | Recommended Workers |
+|------|-----|---------------------|
+| 4 | 16GB | 2-3 |
+| 12 | 64GB | 6-8 |
+| 24 | 256GB | 12-16 |
 
-# Use nginx or HAProxy to load balance across instances
+## Known Limitations
 
-```
+1. **KLEE Limitations**: Some complex code patterns may cause KLEE to fail:
+   - Function pointers / indirect calls
+   - Complex loops with symbolic bounds
+   - Heavy type casting (bitcast in LLVM IR)
+   
+   D-Helix handles these gracefully and returns descriptive errors.
 
-#### Option 4: Docker Compose Scale (Recommended)
+2. **Symbolic Execution Timeouts**: Very complex functions may timeout during symbolic execution.
 
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  d-helix-api:
-    build: .
-    ports:
-      - "10012-10035:10012"
-    deploy:
-      replicas: 12  # Scale to 12 instances
+3. **Shift Operations**: Bit shift operations with symbolic amounts may return `sat` due to symbolic execution limitations (known issue).
+
+## File Structure
 
 ```
-
-```bash
-docker-compose up --scale d-helix-api=12
-
+D-helix-fixed/
+├── Dockerfile              # Docker build configuration
+├── docker-compose.yml      # Docker Compose configuration
+├── README.md               # This file
+├── README_SETUP_GUIDE.md   # Manual setup instructions
+├── D-helix/
+│   ├── D_helix_angr/       # ANGR-based analysis modules
+│   │   ├── analyze_angr.py # Binary analysis with ANGR
+│   │   ├── analyze_results.py # KLEE output processing
+│   │   ├── convert.py      # IR to Z3 conversion
+│   │   └── muqi.py         # Custom ANGR analysis
+│   └── *.patch             # Patches for ANGR/KLEE/PROMPT
+└── fastapi_server/
+    ├── api_server.py       # FastAPI REST server
+    ├── requirements_api.txt # Python dependencies
+    ├── test_comprehensive.py # Full test suite (29 tests)
+    ├── test_api_client.py  # Basic API client tests
+    └── API_DOCUMENTATION.md # Detailed API docs
 ```
 
-**Resource Recommendations for 24 CPUs / 256GB RAM:**
-- **12-16 workers**: Leaves room for KLEE, Angr, and Z3 subprocesses
-- **~10-16GB RAM per worker**: Each verification can use 2-4GB peak
-- **Monitor with**: `htop`, `docker stats`, or `nvidia-smi` (if using GPU)
+## Troubleshooting
 
-### Production Deployment
+### Server Returns 500 Error
 
-For production use:
+Check the server logs for specific error messages:
+- `"KLEE output processing failed"` - KLEE couldn't handle the code (normal for complex functions)
+- `"Z3 solver execution failed"` - Z3 couldn't solve the formula (may need more time/memory)
 
-```bash
-# Install production server
-pip install gunicorn
+### Function Not Found
 
-# Run with systemd service
-sudo tee /etc/systemd/system/d-helix-api.service > /dev/null << 'EOF'
-[Unit]
-Description=D-Helix Verification API
-After=network.target
+Ensure the `function_name` parameter matches the function name in both:
+1. The compiled binary (use `nm binary | grep function_name`)
+2. The decompiled source code
 
-[Service]
-Type=notify
-User=root
-WorkingDirectory=/root/work/D-helix-fixed/fastapi_server
-Environment="PATH=/root/.virtualenvs/angr/bin:/root/PROMPT/build/bin:/root/llvm-3.8/bin:/root/z3/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/root/.virtualenvs/angr/bin/gunicorn api_server:app \
-    --workers 12 \
-    --worker-class uvicorn.workers.UvicornWorker \
-    --bind 0.0.0.0:10012 \
-    --timeout 300
-Restart=always
+### C++ Name Mangling
 
-[Install]
-WantedBy=multi-user.target
-EOF
+For C++ code without `extern "C"`:
+- Set `is_cpp=true` in the request
+- D-Helix will attempt to detect and handle mangled names
 
-# Enable and start service
-sudo systemctl daemon-reload
-sudo systemctl enable d-helix-api
-sudo systemctl start d-helix-api
+## Contributing
 
-# Check status
-sudo systemctl status d-helix-api
+See the detailed setup guide in [README_SETUP_GUIDE.md](README_SETUP_GUIDE.md) for manual environment configuration.
 
-```
+## License
+
+See [D-helix/LICENSE](D-helix/LICENSE)

@@ -32,6 +32,106 @@ from angr.analyses import (
 )
 import pickle
 
+# C++ support
+try:
+    import cxxfilt
+    HAS_CXXFILT = True
+except ImportError:
+    HAS_CXXFILT = False
+    print("Warning: cxxfilt not installed. C++ name demangling will be limited.")
+
+def demangle_cpp_name(mangled_name):
+    """Demangle C++ function names like _ZN5Class6methodEv"""
+    if not HAS_CXXFILT:
+        return mangled_name
+    try:
+        return cxxfilt.demangle(mangled_name)
+    except:
+        return mangled_name
+
+def is_cpp_mangled_name(name):
+    """Check if a function name is a C++ mangled name"""
+    if not name:
+        return False
+    # C++ mangled names start with _Z (Itanium ABI) or ?@ (MSVC)
+    return name.startswith('_Z') or name.startswith('?')
+
+def is_cpp_binary(binary_path):
+    """Detect if binary is compiled from C++ by checking for mangled symbols"""
+    try:
+        p = angr.Project(binary_path, auto_load_libs=False, load_debug_info=False)
+        cpp_indicators = 0
+        total_checked = 0
+        for sym in p.loader.symbols:
+            if sym.name and total_checked < 100:  # Check first 100 symbols
+                total_checked += 1
+                if is_cpp_mangled_name(sym.name):
+                    cpp_indicators += 1
+                    if cpp_indicators >= 3:  # Found enough C++ symbols
+                        return True
+        return cpp_indicators > 0
+    except Exception as e:
+        print(f"Warning: Could not detect binary type: {e}")
+        return False
+
+def get_base_function_name(func_name):
+    """Extract base function name from potentially mangled C++ name"""
+    if is_cpp_mangled_name(func_name):
+        demangled = demangle_cpp_name(func_name)
+        # Extract just the function name from Class::method(args)
+        if '::' in demangled:
+            # Get the method name part
+            method_part = demangled.split('::')[-1]
+            # Remove parameters if present
+            if '(' in method_part:
+                method_part = method_part.split('(')[0]
+            return method_part
+        elif '(' in demangled:
+            return demangled.split('(')[0]
+        return demangled
+    return func_name
+
+def sanitize_cpp_code(code, func_name):
+    """Sanitize C++ decompiled code to make it compilable.
+    
+    This handles issues like:
+    - Class::method() declarations without class definitions
+    - Replace '::' with '_' in function definitions
+    """
+    # Get demangled name to check for class methods
+    if is_cpp_mangled_name(func_name):
+        demangled = demangle_cpp_name(func_name)
+        if '::' in demangled:
+            # Extract the class::method pattern (without parameters)
+            base_pattern = demangled.split('(')[0] if '(' in demangled else demangled
+            # Create a compilable replacement (replace :: with _)
+            sanitized_name = base_pattern.replace('::', '_')
+            # Replace the class::method pattern with class_method in the code
+            code = code.replace(base_pattern, sanitized_name)
+    return code
+
+def get_entrypoint_name_for_bitcode(func_name):
+    """Get the function name as it appears in compiled bitcode.
+    
+    For C++ mangled names, this returns the demangled/sanitized name that
+    the compiler produces in the bitcode (after our sanitization in the source).
+    For C functions, returns the original name.
+    """
+    if is_cpp_mangled_name(func_name):
+        demangled = demangle_cpp_name(func_name)
+        # Handle Class::method pattern
+        if '::' in demangled:
+            # Extract Class::method without parameters
+            base_pattern = demangled.split('(')[0] if '(' in demangled else demangled
+            # Return sanitized name (what's in bitcode after compilation)
+            return base_pattern.replace('::', '_')
+        elif '(' in demangled:
+            # Function without class, just remove parameters
+            return demangled.split('(')[0]
+        return demangled
+    # For C functions or non-mangled names, just replace '.' with '_' for safety
+    return func_name.replace('.', '_')
+
 foreverloop = True
 
 directname_originalclang = "./test_muqi/originalclang"
@@ -68,7 +168,25 @@ log_file = 'angrlog_pcode'
 
 
 avoid_function_file = 'avoid_function_list.txt'
-compiler = "/root/llvm-3.8/bin/clang"
+
+# Compilers for C and C++
+compiler_c = "/root/llvm-3.8/bin/clang"
+compiler_cpp = "/root/llvm-3.8/bin/clang++"
+compiler = compiler_c  # Default, will be set per-binary
+
+# Track if current binary is C++
+current_binary_is_cpp = False
+
+def get_compiler_for_binary(binary_path):
+    """Return appropriate compiler based on binary type"""
+    global current_binary_is_cpp
+    current_binary_is_cpp = is_cpp_binary(binary_path)
+    if current_binary_is_cpp:
+        print(f"Detected C++ binary: {binary_path}")
+        return compiler_cpp
+    else:
+        print(f"Detected C binary: {binary_path}")
+        return compiler_c
 
 avoid_function_list=[
     "_init","free","abort","strtoimax","__errno_location","strncmp","_exit","__fpending","strcpy","puts","reallocarray","textdomain","fclose","bindtextdomain","__ctype_get_mb_cur_max",
@@ -90,6 +208,56 @@ avoid_function_list=[
     
     ]    #this is a list of functions which are system functions
 
+# C++ specific functions to avoid (mangled name prefixes and common C++ runtime functions)
+avoid_function_list_cpp = [
+    # C++ ABI functions
+    "__cxa_atexit", "__cxa_guard_acquire", "__cxa_guard_release", "__cxa_guard_abort",
+    "__cxa_begin_catch", "__cxa_end_catch", "__cxa_throw", "__cxa_rethrow",
+    "__cxa_allocate_exception", "__cxa_free_exception", "__cxa_current_exception_type",
+    "__cxa_call_unexpected", "__cxa_pure_virtual", "__cxa_deleted_virtual",
+    "__gxx_personality_v0", "_Unwind_Resume", "_Unwind_RaiseException",
+    # C++ new/delete operators (both mangled and demangled)
+    "_Znwm", "_Znam", "_ZdlPv", "_ZdaPv", "_ZnwmRKSt9nothrow_t", "_ZnamRKSt9nothrow_t",
+    "operator new", "operator delete", "operator new[]", "operator delete[]",
+    # Common std:: functions that cause issues
+    "_ZSt", "_ZNSt", "_ZNKSt", "_ZNSa", "_ZNSo", "_ZNSi",
+    # Type info and vtables
+    "_ZTI", "_ZTS", "_ZTV", "_ZTT",
+    # std::basic_string, std::allocator, etc.
+    "basic_string", "allocator", "char_traits",
+    # iostream
+    "basic_ostream", "basic_istream", "basic_iostream",
+    "_ZStlsISt11char_traitsIcEERSt13basic_ostreamIcT_ES5_PKc",  # operator<<
+    # Global constructors/destructors for C++
+    "_GLOBAL__sub_I_", "__static_initialization_and_destruction",
+]
+
+# Extend avoid list with C++ functions
+avoid_function_list.extend(avoid_function_list_cpp)
+
+def should_avoid_function(func_name):
+    """Check if a function should be avoided (works for both C and C++ names)"""
+    # Direct match
+    if func_name in avoid_function_list:
+        return True
+    # Check C++ mangled name prefixes that should always be avoided
+    for prefix in ["_ZSt", "_ZNSt", "_ZNKSt", "_ZTI", "_ZTS", "_ZTV", "_ZTT", "_GLOBAL__sub_I_"]:
+        if func_name.startswith(prefix):
+            return True
+    # Check demangled name for C++ functions
+    if is_cpp_mangled_name(func_name):
+        demangled = demangle_cpp_name(func_name)
+        # Avoid std:: functions, operator overloads, and C++ runtime functions
+        avoid_patterns = [
+            "std::", "operator new", "operator delete", "__cxa_",
+            "__static_initialization_and_destruction", "__tcf_",
+            "basic_string", "basic_ostream", "basic_istream",
+            "allocator", "char_traits"
+        ]
+        if any(avoid in demangled for avoid in avoid_patterns):
+            return True
+    return False
+
 checked_function_list = ["set_char_quoting","raw_hasher","locale_charset","xmax","strcspn","freadahead","iso_week_days","mbs_align_pad","fileinfo_name_width","ino_map_insert",
 "idle_string", "argv_iter_n_args","key_init","base64_encode_alloc", "fread_unlocked","tm_year_str","xstrmode","wcslen","split","replay_step_get_filename","wmemset"
 "ul_pty_get_child"
@@ -97,8 +265,19 @@ checked_function_list = ["set_char_quoting","raw_hasher","locale_charset","xmax"
 
 dic_funcname_funcargs = {}
 def find_functionargs(filename_c):
+    """
+    Find function arguments from decompiled code files.
+    Supports both C and C++ file extensions.
+    """
+    global current_binary_is_cpp
+    
     filename_whole_decompiled_c = filename_c
-    filepath_function_namec= os.path.join(directname_function_name,filename_whole_decompiled_c.replace(".c",""))
+    # Determine base name without extension
+    base_name = filename_whole_decompiled_c.replace(".c", "").replace(".cpp", "")
+    filepath_function_namec = os.path.join(directname_function_name, base_name)
+    
+    # Determine file extension based on binary type
+    file_ext = ".cpp" if current_binary_is_cpp else ".c"
     
     function_name_list = []
     first_function_name = ""
@@ -108,9 +287,11 @@ def find_functionargs(filename_c):
         fin.close()
         first_function_name = linelist[0][:-1]
         for i in range(len(linelist)) :
-            if linelist[i][:-1] in avoid_function_list or  linelist[i][:-1] in checked_function_list:
+            func_name = linelist[i][:-1]
+            # Use should_avoid_function for proper C++ handling
+            if should_avoid_function(func_name) or func_name in checked_function_list:
                 continue
-            function_name_list.append(linelist[i][:-1])
+            function_name_list.append(func_name)
     except:
         print(filename_c+" not work!!!")
     
@@ -119,9 +300,20 @@ def find_functionargs(filename_c):
         start_function = False
         k = 0
 
-        function_folder_name = filename_whole_decompiled_c.replace(".c","")+ "_folder"
+        function_folder_name = base_name + "_folder"
         filepath_folder_for_project = os.path.join(directname_folder_for_project,function_folder_name)
-        filepath_function_decompiled_c = os.path.join(filepath_folder_for_project,filename_whole_decompiled_c.replace(".c","")+"_"+function_name_list[i]+".c")
+        
+        # Create safe filename from function name (handle C++ mangled names)
+        safe_func_name = function_name_list[i].replace('<', '_').replace('>', '_').replace(':', '_').replace('*', '_').replace(' ', '_')
+        filepath_function_decompiled_c = os.path.join(filepath_folder_for_project, base_name + "_" + safe_func_name + file_ext)
+        
+        # Also try .c if .cpp doesn't exist (fallback for mixed scenarios)
+        if not os.path.exists(filepath_function_decompiled_c):
+            alt_ext = ".c" if file_ext == ".cpp" else ".cpp"
+            alt_path = os.path.join(filepath_folder_for_project, base_name + "_" + safe_func_name + alt_ext)
+            if os.path.exists(alt_path):
+                filepath_function_decompiled_c = alt_path
+        
         try:
             fin = open( filepath_function_decompiled_c,'r')
             originalc_linelist = fin.readlines()
@@ -232,7 +424,22 @@ def angr_running_pointer(arg1,arg2,angr_project,pcfg_input,filename):
         args.append(claripy.BVS('angr_arg'+str(i), 8*8))
 
     global dic_funcname_funcargs 
-    function_declare_string = dic_funcname_funcargs[required_function]
+    # Try to find function in dictionary - handle C++ mangled names
+    function_declare_string = ""
+    if required_function in dic_funcname_funcargs:
+        function_declare_string = dic_funcname_funcargs[required_function]
+    elif required_function + "\n" in dic_funcname_funcargs:
+        function_declare_string = dic_funcname_funcargs[required_function + "\n"]
+    else:
+        # For C++, try looking up by demangled name
+        for key in dic_funcname_funcargs:
+            key_stripped = key.rstrip('\n')
+            if is_cpp_mangled_name(key_stripped):
+                demangled = demangle_cpp_name(key_stripped)
+                base_name = demangled.split('(')[0] if '(' in demangled else demangled
+                if base_name == required_function or key_stripped == required_function:
+                    function_declare_string = dic_funcname_funcargs[key]
+                    break
 
     #print("In angr_running_pointer before, printing function_args_string:")
     #print(function_declare_string)
@@ -361,8 +568,11 @@ def main_each_function_klee(i,function_name_list,filename,filepath_originalclang
             pass
         else:
             os.system("rm /tmp/klee_"+filename+"_"+function_name[:-1] +"_test.txt")
+            # For C++ mangled names, get the actual function name in the bitcode
+            # This is the demangled/sanitized name that matches what's compiled
+            entrypoint_name = get_entrypoint_name_for_bitcode(function_name[:-1])
             f = open(filepath_prompt_model_on_function, "w")
-            f.write("global settings:\ndata models:\nfunction models:\nlifecycle model:\n    entry-point "+ function_name.replace(".","_"))
+            f.write("global settings:\ndata models:\nfunction models:\nlifecycle model:\n    entry-point "+ entrypoint_name)
             #f.write("global settings: array size 0;\ndata models:(0 = w) where w is argsize "+function_name+" arg 0;\nfunction models:\nlifecycle model:\n    entry-point "+ function_name)
             f.close()
             if foreverloop == False:
@@ -517,7 +727,23 @@ def main_each_function_angr(i,function_name_list,filename,pcfg_angr,angr_project
                     args.append(claripy.BVS('angr_arg'+str(i), 8*8))
 
                 global dic_funcname_funcargs
-                function_declare_string = dic_funcname_funcargs[required_function]
+                # Try to find function in dictionary - handle C++ mangled names
+                function_declare_string = ""
+                if required_function in dic_funcname_funcargs:
+                    function_declare_string = dic_funcname_funcargs[required_function]
+                elif required_function + "\n" in dic_funcname_funcargs:
+                    function_declare_string = dic_funcname_funcargs[required_function + "\n"]
+                else:
+                    # For C++, try looking up by demangled name
+                    for key in dic_funcname_funcargs:
+                        key_stripped = key.rstrip('\n')
+                        if is_cpp_mangled_name(key_stripped):
+                            demangled = demangle_cpp_name(key_stripped)
+                            base_name = demangled.split('(')[0] if '(' in demangled else demangled
+                            if base_name == required_function or key_stripped == required_function:
+                                function_declare_string = dic_funcname_funcargs[key]
+                                break
+                
                 try:
                     function_args_string = re.search("\((.+?)\)", function_declare_string).group(1)
                 except:
@@ -649,10 +875,14 @@ def main_each_function_angr(i,function_name_list,filename,pcfg_angr,angr_project
             if angr_log_work == True:
                 try: 
                     analyze_results.analyze_results(i,filename,function_name)
-                except:
+                except Exception as e:
                     klee_log_work = False 
+                    import traceback
+                    traceback.print_exc()
+                    print(f"Error in analyze_results for {filename}: {function_name}: {e}")
                     f = open(kleelog_file, "a")
                     f.write(filename+": "+function_name + " is wrong during z3 analyzing!\n")
+                    f.write(str(e) + "\n")
                     f.close()
             #'''
             print("both work")
@@ -662,15 +892,84 @@ def main_each_function_angr(i,function_name_list,filename,pcfg_angr,angr_project
                 f.write(filename+": "+function_name + " worked !\n")
                 f.close()
 
-def automatic_compilation(code,filepath_individual_function,func_name,filepath_individual_function_bc,filepath_individual_function_log):
+def get_headers_for_language(is_cpp):
+    """Return appropriate headers based on language.
+    
+    Note: We use C-style headers for C++ as well since LLVM 3.8 clang++
+    may not have full C++ standard library headers available.
+    The decompiled code typically doesn't use C++ specific features anyway.
+    We also use extern "C" to prevent name mangling so KLEE can find functions.
+    """
+    if is_cpp:
+        # Use C headers with extern "C" to prevent name mangling
+        # This ensures KLEE can find functions by their demangled names
+        return """#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+typedef unsigned int    BOT;
+typedef unsigned int    uint;
+typedef unsigned long   ulong;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+"""
+    else:
+        return """#include <stdio.h>
+#include <stdbool.h>
+#include <stdint.h>
+typedef unsigned int    BOT;
+typedef unsigned int    uint;
+typedef unsigned long   ulong;
+
+"""
+
+def get_footer_for_language(is_cpp):
+    """Return appropriate footer to close extern C block for C++."""
+    if is_cpp:
+        return """
+#ifdef __cplusplus
+}
+#endif
+"""
+    else:
+        return ""
+
+def automatic_compilation(code, filepath_individual_function, func_name, filepath_individual_function_bc, filepath_individual_function_log, is_cpp=False):
+    """
+    Compile decompiled code to LLVM bitcode.
+    Supports both C and C++ based on is_cpp flag.
+    """
+    global current_binary_is_cpp
+    
+    # Use the global flag if is_cpp not explicitly set
+    use_cpp = is_cpp or current_binary_is_cpp
+    
+    # Select appropriate compiler
+    current_compiler = compiler_cpp if use_cpp else compiler_c
+    
+    # Get appropriate headers
+    headers = get_headers_for_language(use_cpp)
+    
+    # Additional C++ compilation flags
+    cpp_flags = " -std=c++11 -fno-exceptions " if use_cpp else ""
+    
+    # Sanitize C++ code (replace Class::method with Class_method, etc.)
+    if use_cpp:
+        code = sanitize_cpp_code(code, func_name)
+    
+    # Get footer to close extern "C" block for C++
+    footer = get_footer_for_language(use_cpp)
     
     #'''
     with open(filepath_individual_function, "w") as file:
-        file.write("#include <stdio.h>\n #include <stdbool.h>\n #include <stdint.h>\n")
-        file.write("typedef unsigned int    BOT;\n")
-        file.write("typedef unsigned int    uint;\n")
-        file.write("typedef unsigned long    ulong;\n")
+        file.write(headers)
         file.write(code)
+        # Close extern "C" before main (which should also be extern "C")
+        file.write(footer)
         if "main" not in func_name[0:4]:
             file.write("\nint main(int param_1, const char *param_2[]){}\n")
         file.close()
@@ -692,7 +991,8 @@ def automatic_compilation(code,filepath_individual_function,func_name,filepath_i
         max_iteration -= 1
         declare_global_name_list = []
         change_to_array = []
-        os.system(compiler + " -emit-llvm -O0  -c -Wl,--demangle -Wno-everything " + filepath_individual_function + " -o " + filepath_individual_function_bc +"  2> " + filepath_individual_function_log)
+        compile_cmd = current_compiler + cpp_flags + " -emit-llvm -O0  -c -Wl,--demangle -Wno-everything " + filepath_individual_function + " -o " + filepath_individual_function_bc +"  2> " + filepath_individual_function_log
+        os.system(compile_cmd)
 
         #check the error from compilation of modified code
         flog = open (filepath_individual_function_log,'r')
@@ -763,6 +1063,7 @@ def main_each_program(filename):
 
     #reset dictionary
     global dic_funcname_funcargs 
+    global current_binary_is_cpp
     dic_funcname_funcargs = {}
         
         
@@ -775,6 +1076,11 @@ def main_each_program(filename):
     filepath_generated_whole_c = os.path.join(directname_generated_whole_c, filename_c)
     filepath_generated_html = os.path.join(directname_generated_html, filename_html)
     filepath_generatedll = os.path.join(directname_generatedll, filename_ll)
+
+    # Detect if binary is C++
+    current_binary_is_cpp = is_cpp_binary(filepath_originalclang)
+    file_ext = ".cpp" if current_binary_is_cpp else ".c"
+    print(f"Binary type detection: {'C++' if current_binary_is_cpp else 'C'} (extension: {file_ext})")
 
     #generate decompiled code, function_address in decompiled code, function name in decompiled code
     filepath_generated_function_name= os.path.join(directname_function_name,filename_clang)
@@ -847,12 +1153,23 @@ def main_each_program(filename):
     for function in angr_project.kb.functions:
         if not angr_project.kb.functions[function].is_plt and not angr_project.kb.functions[function].is_simprocedure and not angr_project.kb.functions[function].alignment:
             func_name = pcfg_angr.functions.get(function).name
+            
+            # Skip C++ functions that should be avoided
+            if should_avoid_function(func_name):
+                print(f"Skipping avoided function: {func_name}")
+                continue
+            
+            # For C++ binaries, create a safe filename from potentially mangled names
+            safe_func_name = func_name.replace('<', '_').replace('>', '_').replace(':', '_').replace('*', '_').replace(' ', '_')
+            
             #if "sub_" in func_name:
             #    continue
             func_addr = function
-            filepath_individual_function = os.path.join(filepath_folder_for_project,filename+"_"+func_name+".c")
-            filepath_individual_function_log = os.path.join(filepath_folder_for_project_log,filename+"_"+func_name+".txt")
-            filepath_individual_function_bc = os.path.join(directname_generatedbc,filename+"_"+func_name+".bc")
+            
+            # Use appropriate file extension based on binary type
+            filepath_individual_function = os.path.join(filepath_folder_for_project,filename+"_"+safe_func_name+file_ext)
+            filepath_individual_function_log = os.path.join(filepath_folder_for_project_log,filename+"_"+safe_func_name+".txt")
+            filepath_individual_function_bc = os.path.join(directname_generatedbc,filename+"_"+safe_func_name+".bc")
             
             #decompile_test(pcfg_angr,function,angr_project)
             try:
@@ -882,12 +1199,13 @@ def main_each_program(filename):
                 code += dec.codegen.text
                 file_function_name.write(func_name+"\n")
                 
+                # Use get_headers_for_language for proper headers
+                headers = get_headers_for_language(current_binary_is_cpp)
+                footer = get_footer_for_language(current_binary_is_cpp)
                 with open(filepath_individual_function, "w") as file:
-                    file.write("#include <stdio.h>\n #include <stdbool.h>\n #include <stdint.h>\n")
-                    file.write("typedef unsigned int    BOT;\n")
-                    file.write("typedef unsigned int    uint;\n")
-                    file.write("typedef unsigned long    ulong;\n")
+                    file.write(headers)
                     file.write(code)
+                    file.write(footer)
                     if "main" not in func_name[0:4]:
                         file.write("\nint main(int param_1, const char *param_2[]){}\n")
                     file.close()
@@ -895,7 +1213,7 @@ def main_each_program(filename):
                 #os.system(compiler + " -emit-llvm -O0  -c -Wl,--demangle -Wno-everything " + filepath_individual_function + " -o " + filepath_individual_function_bc +"  2> " + filepath_individual_function_log)
                 
                 print("before automatic compilation")
-                automatic_compilation(code,filepath_individual_function,func_name,filepath_individual_function_bc,filepath_individual_function_log)
+                automatic_compilation(code, filepath_individual_function, func_name, filepath_individual_function_bc, filepath_individual_function_log, current_binary_is_cpp)
                 print("after automatic compilation")
     file_function_name.close()
     #'''
@@ -931,6 +1249,13 @@ def main_each_program(filename):
             print("111")
         except :
                 pass
+    
+    # Run Z3 solver on all generated Z3 files for this binary
+    print("Running Z3 solver on generated Z3 files...")
+    for z3file in os.listdir(directname_z3):
+        if z3file.startswith(filename + "_"):
+            z3_each_file(z3file)
+    print("Z3 solving completed")
         
     print(filename)
     print("finished")

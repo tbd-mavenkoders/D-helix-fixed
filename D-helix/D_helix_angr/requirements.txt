@@ -1,0 +1,10 @@
+# D-Helix Angr Requirements
+# Install in angr venv: source /root/.virtualenvs/angr/bin/activate && pip install -r requirements.txt
+
+# Core dependencies (already in angr venv)
+angr
+claripy
+wrapt-timeout-decorator
+
+# C++ support
+cxxfilt>=0.3.0

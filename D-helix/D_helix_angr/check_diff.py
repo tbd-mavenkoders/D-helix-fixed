@@ -109,10 +109,19 @@ def write_log_to_file(fout,linelistdiff,linelistz3,filename):
     '''
     filename_forfile = "Unknown"
     print(whole_functionname)
+    # Try to find .c file first, then .cpp for C++ binaries
     os.system("find ./test_muqi/generated_function_c/project_folder/ -name " + whole_functionname+".c > temp_found_file.txt")
     f_file = open("temp_found_file.txt",'r')
     linelist = f_file.readlines()
     f_file.close()
+    
+    # If no .c file found, try .cpp for C++ binaries
+    if len(linelist) == 0:
+        os.system("find ./test_muqi/generated_function_c/project_folder/ -name " + whole_functionname+".cpp > temp_found_file.txt")
+        f_file = open("temp_found_file.txt",'r')
+        linelist = f_file.readlines()
+        f_file.close()
+    
     print(linelist)
 
     # Removed hardcoded /home/muqi/ path - not needed for basic D-Helix operation

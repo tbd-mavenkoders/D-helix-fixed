@@ -4,6 +4,7 @@ FastAPI server for D-Helix binary verification
 Accepts binary + decompiled code, returns Z3 verification results
 
 Fixed to match generate_symbolic.py behavior exactly.
+Supports both C and C++ binaries.
 """
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
@@ -21,6 +22,14 @@ import uuid
 import logging
 import re
 from contextlib import asynccontextmanager
+
+# Try to import cxxfilt for C++ name demangling
+try:
+    import cxxfilt
+    HAS_CXXFILT = True
+except ImportError:
+    HAS_CXXFILT = False
+    logging.warning("cxxfilt not installed, C++ demangling will be limited")
 
 # Add D-helix module path
 DHELIX_ANGR_PATH = "/root/work/D-helix-fixed/D-helix/D_helix_angr"
@@ -42,7 +51,8 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 TEMP_BASE_DIR = "/tmp/dhelix_api"
-COMPILER = "/root/llvm-3.8/bin/clang"
+COMPILER_C = "/root/llvm-3.8/bin/clang"
+COMPILER_CPP = "/root/llvm-3.8/bin/clang++"
 KLEE_BIN = "/root/PROMPT/build/bin/klee"
 Z3_BIN = "/root/z3/bin/z3"
 TIMEOUT_KLEE = 30
@@ -63,6 +73,40 @@ async def lifespan(app: FastAPI):
     if os.path.exists(TEMP_BASE_DIR):
         shutil.rmtree(TEMP_BASE_DIR, ignore_errors=True)
     logger.info("D-Helix API Server shutdown")
+
+
+# C++ support functions
+def is_cpp_mangled_name(name: str) -> bool:
+    """Check if a name appears to be a C++ mangled name."""
+    return name.startswith('_Z') or name.startswith('__Z')
+
+
+def demangle_cpp_name(name: str) -> str:
+    """Demangle a C++ mangled name to get the base function name."""
+    if not HAS_CXXFILT:
+        return name
+    try:
+        demangled = cxxfilt.demangle(name)
+        # Extract just the function name without parameters
+        # e.g., "global_add(int, int)" -> "global_add"
+        # e.g., "Calculator::add(int, int)" -> "Calculator_add" (sanitized)
+        if '(' in demangled:
+            demangled = demangled.split('(')[0]
+        # Replace :: with _ for class methods
+        demangled = demangled.replace('::', '_')
+        return demangled
+    except:
+        return name
+
+
+def sanitize_cpp_code(code: str) -> str:
+    """
+    Sanitize C++ code for LLVM 3.8 compatibility.
+    - Replace Class::method with Class_method
+    """
+    # Replace :: with _ (for class methods)
+    sanitized = re.sub(r'(\w+)::(\w+)', r'\1_\2', code)
+    return sanitized
 
 
 app = FastAPI(
@@ -112,39 +156,70 @@ def run_cmd_with_timeout(cmd: str, timeout: int) -> Tuple[int, str, str]:
         return -1, "", str(e)
 
 
-def preprocess_decompiled_code(code: str, function_name: str) -> str:
+def preprocess_decompiled_code(code: str, function_name: str, is_cpp: bool = False) -> str:
     """
-    Preprocess decompiled C code like generate_symbolic.py does:
+    Preprocess decompiled C/C++ code like generate_symbolic.py does:
     - Add includes
     - Add typedefs
     - Add main function stub if not main
+    - For C++: add extern "C" block and sanitize Class::method syntax
     """
-    preprocessed = """#include <stdio.h>
-#include <stdbool.h>
+    # Common C headers that work with LLVM 3.8
+    header = """#include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
 typedef unsigned int    BOT;
 typedef unsigned int    uint;
 typedef unsigned long   ulong;
 
 """
-    preprocessed += code
     
-    # Add main stub if function is not main
-    if "main" not in function_name[0:4]:
-        preprocessed += "\n\nint main(int param_1, const char *param_2[]){}\n"
+    if is_cpp:
+        # Sanitize C++ code (replace :: with _)
+        code = sanitize_cpp_code(code)
+        
+        # Add extern "C" block for KLEE compatibility
+        preprocessed = header + """#ifdef __cplusplus
+extern "C" {
+#endif
+
+"""
+        preprocessed += code
+        
+        # Add main stub if function is not main
+        if "main" not in function_name[0:4]:
+            preprocessed += "\n\nint main(int param_1, const char *param_2[]){}\n"
+        
+        # Close extern "C" block
+        preprocessed += """
+#ifdef __cplusplus
+}
+#endif
+"""
+    else:
+        # C code preprocessing
+        preprocessed = header
+        preprocessed += code
+        
+        # Add main stub if function is not main
+        if "main" not in function_name[0:4]:
+            preprocessed += "\n\nint main(int param_1, const char *param_2[]){}\n"
     
     return preprocessed
 
 
-def compile_to_bitcode(decompiled_c_path: str, output_bc_path: str, log_path: str) -> bool:
+def compile_to_bitcode(decompiled_c_path: str, output_bc_path: str, log_path: str, is_cpp: bool = False) -> bool:
     """
-    Compile decompiled C code to LLVM bitcode with automatic error recovery
+    Compile decompiled C/C++ code to LLVM bitcode with automatic error recovery
     like automatic_compilation() in generate_symbolic.py
     """
     max_iterations = 3
+    compiler = COMPILER_CPP if is_cpp else COMPILER_C
     
     for iteration in range(max_iterations):
-        cmd = f"{COMPILER} -emit-llvm -O0 -c -Wno-everything {decompiled_c_path} -o {output_bc_path} 2> {log_path}"
+        cmd = f"{compiler} -emit-llvm -O0 -c -Wno-everything {decompiled_c_path} -o {output_bc_path} 2> {log_path}"
         exit_code, stdout, stderr = run_cmd_with_timeout(cmd, 10)
         
         # Check if compilation succeeded
@@ -179,8 +254,9 @@ def compile_to_bitcode(decompiled_c_path: str, output_bc_path: str, log_path: st
             content_lines = f.readlines()
         
         with open(decompiled_c_path, 'w') as f:
-            # Write first 6 lines (headers and typedefs)
-            for i in range(min(6, len(content_lines))):
+            # Write first 10 lines (headers and typedefs, extern C block for C++)
+            header_lines = min(10, len(content_lines))
+            for i in range(header_lines):
                 f.write(content_lines[i])
             
             # Add global variable declarations
@@ -188,7 +264,7 @@ def compile_to_bitcode(decompiled_c_path: str, output_bc_path: str, log_path: st
                 f.write(f"int {var}; //add global variable\n")
             
             # Write rest of file
-            for i in range(6, len(content_lines)):
+            for i in range(header_lines, len(content_lines)):
                 f.write(content_lines[i])
         
         logger.info(f"Added {len(declare_global_list)} undeclared variables, retrying compilation...")
@@ -277,6 +353,7 @@ def run_angr_symbolic_execution(
     """
     Run Angr symbolic execution on binary.
     Matches generate_symbolic.py main_each_function_angr() exactly.
+    Supports C++ mangled names by trying both mangled and demangled names.
     """
     try:
         # Update muqi global variables for this request
@@ -299,12 +376,24 @@ def run_angr_symbolic_execution(
         except Exception as e:
             logger.warning(f"CompleteCallingConventionsAnalysis failed: {e}")
         
-        # Find function address
+        # Find function address - try multiple name variations for C++ support
         required_address = 0
-        try:
-            required_address = project.loader.find_symbol(function_name).rebased_addr
-        except:
-            pass
+        search_names = [function_name]
+        
+        # If it's a C++ mangled name, also try the demangled version
+        if is_cpp_mangled_name(function_name):
+            demangled = demangle_cpp_name(function_name)
+            search_names.append(demangled)
+            logger.info(f"C++ function: trying both '{function_name}' and '{demangled}'")
+        
+        for name in search_names:
+            if required_address != 0:
+                break
+            try:
+                required_address = project.loader.find_symbol(name).rebased_addr
+                logger.info(f"Found symbol '{name}' at {hex(required_address)}")
+            except:
+                pass
         
         # Try FUN_ prefix parsing
         if "FUN_" in function_name and required_address == 0:
@@ -396,6 +485,9 @@ def process_klee_output(klee_test_path: str, function_name: str, work_dir: str) 
     Process KLEE output to generate CFG and IR files.
     klee_test_path is the _test.txt file created by KLEE internally.
     Returns (success, klee_cfg_path).
+    
+    For C++ mangled names, uses the demangled name when searching KLEE output
+    because KLEE uses the unmangled name from extern "C" blocks.
     """
     try:
         # Output files in work_dir
@@ -419,22 +511,38 @@ def process_klee_output(klee_test_path: str, function_name: str, work_dir: str) 
         # Import analyze_results functions
         from analyze_results import filter_instruction_in_function, output_cfg_lifter
         
+        # For C++ mangled names, use the demangled name when searching KLEE output
+        search_function_name = function_name
+        if is_cpp_mangled_name(function_name):
+            search_function_name = demangle_cpp_name(function_name)
+            logger.info(f"C++ function: {function_name} -> searching for {search_function_name}")
+        
         # Filter KLEE output for the function
-        function_list = [function_name]
+        function_list = [search_function_name]
         exclude_function_list = ["__user_main", "__uClibc_main"]
         
-        logger.info(f"Filtering KLEE instructions for {function_name}")
-        filter_instruction_in_function(klee_test_path, klee_symbolic_path, function_list, exclude_function_list)
+        logger.info(f"Filtering KLEE instructions for {search_function_name}")
+        filter_success = filter_instruction_in_function(klee_test_path, klee_symbolic_path, function_list, exclude_function_list)
+        
+        if filter_success is False:
+            logger.warning(f"Function {search_function_name} not found in KLEE output - KLEE symbolic execution may have failed")
+            # Don't return error yet - check if we got any output
         
         # Check symbolic execution output
         if os.path.exists(klee_symbolic_path):
             with open(klee_symbolic_path, 'r') as f:
                 sym_content = f.read()
+                if not sym_content.strip():
+                    logger.error(f"Symbolic execution output is empty - KLEE could not analyze function {search_function_name}")
+                    return False, ""
                 logger.info(f"Symbolic execution output size: {len(sym_content)} bytes")
+        else:
+            logger.error(f"Symbolic execution output file not created: {klee_symbolic_path}")
+            return False, ""
         
         # Generate CFG from KLEE output
         logger.info("Generating KLEE CFG...")
-        output_cfg_lifter(function_name, klee_symbolic_path, klee_cfg_path)
+        output_cfg_lifter(search_function_name, klee_symbolic_path, klee_cfg_path)
         
         # Validate CFG was created and has content
         if not os.path.exists(klee_cfg_path):
@@ -479,8 +587,15 @@ def generate_z3_formula(
         
         # Convert KLEE CFG to IR
         logger.info("Converting KLEE CFG to IR...")
-        convert.cfg_to_ir(klee_cfg_path, klee_cfg_reorder_path, klee_ir_path, True)
-        convert.ir_reorder(klee_ir_path)
+        klee_cfg_success = convert.cfg_to_ir(klee_cfg_path, klee_cfg_reorder_path, klee_ir_path, True)
+        if klee_cfg_success is False:
+            logger.error("KLEE CFG to IR conversion failed - KLEE output may be malformed or incomplete")
+            return False, False
+        
+        klee_reorder_success = convert.ir_reorder(klee_ir_path)
+        if klee_reorder_success is False:
+            logger.error("KLEE IR reorder failed - IR file may be empty")
+            return False, False
         
         # Process Angr logs
         logger.info("Processing Angr logs...")
@@ -494,7 +609,17 @@ def generate_z3_formula(
         
         # Generate Z3 formula
         logger.info("Generating Z3 formula...")
-        is_unsat = convert.ir_to_z3(angr_log_path, angr_ir_third_flip, klee_ir_path, z3_output_path)
+        z3_result = convert.ir_to_z3(angr_log_path, angr_ir_third_flip, klee_ir_path, z3_output_path)
+        
+        # Handle new return format (success, unsat) or legacy format (just unsat)
+        if isinstance(z3_result, tuple):
+            z3_success, is_unsat = z3_result
+            if not z3_success:
+                logger.error("Z3 formula generation failed - input IR files may be incomplete or malformed")
+                return False, False
+        else:
+            # Legacy format - just the unsat boolean
+            is_unsat = z3_result
         
         return True, is_unsat
     
@@ -558,11 +683,17 @@ def extract_counterexample(z3_formula_path: str) -> Optional[Dict[str, Any]]:
 @app.post("/verify", response_model=VerificationResult)
 async def verify_binary(
     binary: UploadFile = File(..., description="Binary file to verify"),
-    decompiled_code: UploadFile = File(..., description="Decompiled C source code"),
-    function_name: str = Form(..., description="Name of the function to verify")
+    decompiled_code: UploadFile = File(..., description="Decompiled C/C++ source code"),
+    function_name: str = Form(..., description="Name of the function to verify"),
+    is_cpp: bool = Form(False, description="Whether the code is C++ (set to true for C++ binaries)")
 ):
     """
     Verify semantic equivalence between binary and decompiled code.
+    Supports both C and C++ binaries.
+    
+    - For C binaries: set is_cpp=false (default)
+    - For C++ binaries: set is_cpp=true
+    - C++ mangled function names (starting with _Z) are automatically detected
     """
     request_id = str(uuid.uuid4())
     work_dir = os.path.join(TEMP_BASE_DIR, request_id)
@@ -570,20 +701,26 @@ async def verify_binary(
     # Use short names for temp files
     short_name = f"req_{request_id[:8]}"
     
+    # Auto-detect C++ from mangled function names
+    if is_cpp_mangled_name(function_name):
+        is_cpp = True
+        logger.info(f"Auto-detected C++ from mangled function name: {function_name}")
+    
     try:
         os.makedirs(work_dir, exist_ok=True)
-        logger.info(f"Processing request {request_id}, function: {function_name}")
+        logger.info(f"Processing request {request_id}, function: {function_name}, is_cpp: {is_cpp}")
         
         # Save uploaded files
         binary_path = os.path.join(work_dir, short_name)
-        decompiled_path = os.path.join(work_dir, f"{short_name}_{function_name}.c")
+        file_ext = ".cpp" if is_cpp else ".c"
+        decompiled_path = os.path.join(work_dir, f"{short_name}_{function_name}{file_ext}")
         
         with open(binary_path, 'wb') as f:
             f.write(await binary.read())
         
-        # Preprocess decompiled code
+        # Preprocess decompiled code (with C++ support)
         raw_code = (await decompiled_code.read()).decode('utf-8', errors='ignore')
-        processed_code = preprocess_decompiled_code(raw_code, function_name)
+        processed_code = preprocess_decompiled_code(raw_code, function_name, is_cpp)
         
         with open(decompiled_path, 'w') as f:
             f.write(processed_code)
@@ -599,7 +736,7 @@ async def verify_binary(
         bc_path = os.path.join(generatedbc_dir, f"{short_name}_{function_name}.bc")
         compile_log_path = os.path.join(work_dir, f"{short_name}_{function_name}_compile.log")
         
-        if not compile_to_bitcode(decompiled_path, bc_path, compile_log_path):
+        if not compile_to_bitcode(decompiled_path, bc_path, compile_log_path, is_cpp):
             raise HTTPException(status_code=400, detail="Failed to compile decompiled code")
         
         # Step 2: Run KLEE symbolic execution
@@ -609,8 +746,14 @@ async def verify_binary(
         klee_log_path = os.path.join(work_dir, f"klee_{short_name}_{function_name}.txt")
         klee_error_path = os.path.join(work_dir, f"klee_{short_name}_{function_name}_error.txt")
         
+        # For C++ with extern "C", use demangled name for KLEE entry point
+        klee_function_name = function_name
+        if is_cpp and is_cpp_mangled_name(function_name):
+            klee_function_name = demangle_cpp_name(function_name)
+            logger.info(f"Using demangled function name for KLEE: {klee_function_name}")
+        
         klee_success, klee_test_path = run_klee_symbolic_execution(
-            bc_path, function_name, model_path, klee_log_path, klee_error_path
+            bc_path, klee_function_name, model_path, klee_log_path, klee_error_path
         )
         
         if not klee_success:
